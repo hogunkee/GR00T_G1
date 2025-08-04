@@ -466,7 +466,9 @@ class FourierGr1FullBodyDataConfig(BaseDataConfig):
         )
         language_modality = ModalityConfig(
             delta_indices=self.observation_indices,
-            modality_keys=self.language_keys,) modality_configs = {
+            modality_keys=self.language_keys,
+        ) 
+        modality_configs = {
             "video": video_modality,
             "state": state_modality,
             "action": action_modality,
