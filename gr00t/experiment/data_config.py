@@ -335,7 +335,7 @@ class UnitreeG1FullBodyDataConfig(UnitreeG1DataConfig):
 
 
 class FourierGr1FullUpperBodyDataConfig(BaseDataConfig):
-    video_keys = ["video.front_view"]
+    video_keys = ["video.ego_view"]
     state_keys = [
         "state.left_arm",
         "state.right_arm",
@@ -428,7 +428,7 @@ class FourierGr1FullUpperBodyDataConfig(BaseDataConfig):
 
 
 class FourierGr1FullBodyDataConfig(BaseDataConfig):
-    video_keys = ["video.front_view"]
+    video_keys = ["video.ego_view"]
     state_keys = [
         "state.left_arm",
         "state.right_arm",
@@ -528,7 +528,7 @@ class BimanualPandaGripperDataConfig(BaseDataConfig):
     video_keys = [
         "video.right_wrist_view",
         "video.left_wrist_view",
-        "video.front_view",
+        "video.ego_view",
     ]
     state_keys = [
         "state.right_arm_eef_pos",
