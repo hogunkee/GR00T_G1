@@ -78,8 +78,8 @@ class MultiVideoRecorder:
         self.input_pix_fmt = input_pix_fmt
         self.kwargs = kwargs
         # runtime set
-        self._reset_state()
         self.cameras = ['bird', 'front', 'back', 'side']
+        self._reset_state()
 
     def _reset_state(self):
         self.container = [None for c in self.cameras]
