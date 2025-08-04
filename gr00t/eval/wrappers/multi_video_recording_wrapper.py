@@ -216,11 +216,11 @@ class MultiVideoRecordingWrapper(gym.Wrapper):
 
         if self.video_dir is not None and self.file_paths is not None:
             # rename the file to indicate success or failure
-            original_filestem = self.file_paths[0].stem
-            new_filestem = f"{original_filestem}_success{int(self.is_success)}"
-            new_file_paths = [self.video_dir / f"{new_filestem}_{cam}.mp4" for cam in self.cameras]
             for cidx in range(len(self.cameras)):
-                os.rename(self.file_paths[cidx], new_file_paths[cidx])
+                original_filestem = self.file_paths[cidx].stem
+                new_filestem = f"{original_filestem}_success{int(self.is_success)}"
+                new_file_path = [self.video_dir / f"{new_filestem}.mp4"
+                os.rename(self.file_paths[cidx], new_file_path)
 
         self.is_success = False
         if self.video_dir is not None:
