@@ -117,13 +117,13 @@ class MultiVideoRecorder:
         return self.stream[0] is not None
         #return self.stream is not None
 
-    def start(self, file_path, start_time=None):
+    def start(self, file_paths, start_time=None):
         if self.is_ready():
             # if still recording, stop first and start anew.
             self.stop()
 
         for cam_idx in range(len(self.cameras)):
-            self.container[cam_idx] = av.open(file_path, mode="w")
+            self.container[cam_idx] = av.open(file_paths[cam_idx], mode="w")
             self.stream[cam_idx] = self.container[cam_idx].add_stream(self.codec, rate=self.fps)
             codec_context = self.stream[cam_idx].codec_context
             for k, v in self.kwargs.items():
@@ -202,7 +202,7 @@ class MultiVideoRecordingWrapper(gym.Wrapper):
         self.video_dir = video_dir
         self.video_recorder = video_recorder
         self.cameras = cameras
-        self.file_path = None
+        self.file_paths = None
 
         self.step_count = 0
 
@@ -214,24 +214,25 @@ class MultiVideoRecordingWrapper(gym.Wrapper):
         self.step_count = 1
         self.video_recorder.stop()
 
-        if self.video_dir is not None and self.file_path is not None:
+        if self.video_dir is not None and self.file_paths is not None:
             # rename the file to indicate success or failure
-            original_filestem = self.file_path.stem
+            original_filestem = self.file_paths[0].stem
             new_filestem = f"{original_filestem}_success{int(self.is_success)}"
-            new_file_path = self.video_dir / f"{new_filestem}.mp4"
-            os.rename(self.file_path, new_file_path)
+            new_file_paths = [self.video_dir / f"{new_filestem}_{cam}.mp4" for cam in self.cameras]
+            for cidx in range(len(self.cameras)):
+                os.rename(self.file_paths[cidx], new_file_paths[cidx])
 
         self.is_success = False
         if self.video_dir is not None:
-            self.file_path = self.video_dir / f"{uuid.uuid4()}.mp4"
+            self.file_paths = [self.video_dir / f"{uuid.uuid4()}_{cam}.mp4" for cam in self.cameras]
         return result
 
     def step(self, action):
         result = super().step(action)
         self.step_count += 1
-        if self.file_path is not None and ((self.step_count % self.steps_per_render) == 0):
+        if self.file_paths is not None and ((self.step_count % self.steps_per_render) == 0):
             if not self.video_recorder.is_ready():
-                self.video_recorder.start(self.file_path)
+                self.video_recorder.start(self.file_paths)
 
             #frame = self.env.render()
             frames = []
@@ -246,4 +247,4 @@ class MultiVideoRecordingWrapper(gym.Wrapper):
     def render(self, mode="rgb_array", **kwargs):
         if self.video_recorder.is_ready():
             self.video_recorder.stop()
-        return self.file_path
+        return self.file_paths
