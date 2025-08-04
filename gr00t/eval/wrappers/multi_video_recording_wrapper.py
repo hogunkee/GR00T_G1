@@ -237,7 +237,7 @@ class MultiVideoRecordingWrapper(gym.Wrapper):
             #frame = self.env.render()
             frames = []
             for cam in self.cameras: 
-                frame = self.env.sim.render(camera_name=view, width=640, height=480, depth=False)[::-1]
+                frame = self.env.env.env.env.sim.render(camera_name=cam, width=640, height=480, depth=False)[::-1]
                 frames.append(frame)
                 assert frame.dtype == np.uint8
             self.video_recorder.write_frame(frames)
