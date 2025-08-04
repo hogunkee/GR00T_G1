@@ -33,6 +33,10 @@ from gr00t.eval.wrappers.video_recording_wrapper import (
     VideoRecorder,
     VideoRecordingWrapper,
 )
+from gr00t.eval.wrappers.multi_video_recording_wrapper import (
+    MultiVideoRecorder,
+    MultiVideoRecordingWrapper,
+)
 from gr00t.model.policy import BasePolicy
 
 # from gymnasium.envs.registration import registry
@@ -75,6 +79,7 @@ class SimulationConfig:
     n_envs: int = 1
     video: VideoConfig = field(default_factory=VideoConfig)
     multistep: MultiStepConfig = field(default_factory=MultiStepConfig)
+    multi_video: bool = False
 
 
 class SimulationInferenceClient(BaseInferenceClient, BasePolicy):
@@ -182,20 +187,36 @@ def _create_single_env(config: SimulationConfig, idx: int) -> gym.Env:
     env = gym.make(config.env_name, enable_render=True)
     # Add video recording wrapper if needed (only for the first environment)
     if config.video.video_dir is not None:
-        video_recorder = VideoRecorder.create_h264(
-            fps=config.video.fps,
-            codec=config.video.codec,
-            input_pix_fmt=config.video.input_pix_fmt,
-            crf=config.video.crf,
-            thread_type=config.video.thread_type,
-            thread_count=config.video.thread_count,
-        )
-        env = VideoRecordingWrapper(
-            env,
-            video_recorder,
-            video_dir=Path(config.video.video_dir),
-            steps_per_render=config.video.steps_per_render,
-        )
+        if config.multi_video:
+            video_recorder = MultiVideoRecorder.create_h264(
+                fps=config.video.fps,
+                codec=config.video.codec,
+                input_pix_fmt=config.video.input_pix_fmt,
+                crf=config.video.crf,
+                thread_type=config.video.thread_type,
+                thread_count=config.video.thread_count,
+            )
+            env = MultiVideoRecordingWrapper(
+                env,
+                video_recorder,
+                video_dir=Path(config.video.video_dir),
+                steps_per_render=config.video.steps_per_render,
+            )
+        else:
+            video_recorder = VideoRecorder.create_h264(
+                fps=config.video.fps,
+                codec=config.video.codec,
+                input_pix_fmt=config.video.input_pix_fmt,
+                crf=config.video.crf,
+                thread_type=config.video.thread_type,
+                thread_count=config.video.thread_count,
+            )
+            env = VideoRecordingWrapper(
+                env,
+                video_recorder,
+                video_dir=Path(config.video.video_dir),
+                steps_per_render=config.video.steps_per_render,
+            )
     # Add multi-step wrapper
     env = MultiStepWrapper(
         env,

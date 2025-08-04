@@ -69,6 +69,8 @@ if __name__ == "__main__":
     parser.add_argument("--client", action="store_true", help="Run the client")
     # log
     parser.add_argument("--log", action="store_true", help="Save the log.")
+    # multi-cameras  
+    parser.add_argument("--multi_video", action="store_true", help="Save the multi camera images.")
     args = parser.parse_args()
 
     if args.server:
@@ -99,6 +101,7 @@ if __name__ == "__main__":
             multistep=MultiStepConfig(
                 n_action_steps=args.n_action_steps, max_episode_steps=args.max_episode_steps
             ),
+            multi_video=args.multi_video,
         )
 
         # Run the simulation
