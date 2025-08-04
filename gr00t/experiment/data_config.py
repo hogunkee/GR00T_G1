@@ -436,7 +436,8 @@ class FourierGr1FullBodyDataConfig(BaseDataConfig):
         "state.right_hand",
         "state.waist",
         "state.neck",
-        "state.legs",
+        "state.left_leg",
+        "state.right_leg",
     ]
     action_keys = [
         "action.left_arm",
@@ -445,7 +446,8 @@ class FourierGr1FullBodyDataConfig(BaseDataConfig):
         "action.right_hand",
         "action.waist",
         "action.neck",
-        "action.legs",
+        "action.left_leg",
+        "action.right_leg",
     ]
     language_keys = ["annotation.human.action.task_description"]
     observation_indices = [0]
