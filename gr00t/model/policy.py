@@ -20,6 +20,7 @@ from typing import Any, Dict, Optional, Union
 
 import numpy as np
 import torch
+import torch.nn.functional as F
 from huggingface_hub import snapshot_download
 from huggingface_hub.errors import HFValidationError, RepositoryNotFoundError
 
@@ -177,9 +178,13 @@ class Gr00tPolicy(BasePolicy):
 
         # Apply transforms
         normalized_input = self.apply_transforms(observations)
-
         normalized_action = self._get_action_from_normalized_input(normalized_input)
-        unnormalized_action = self._get_unnormalized_action(normalized_action)
+        ## Leg Actions: Zero actions for each leg ##
+        if observations['state'].shape[-1]==44:
+            normalized_action_padded = F.pad(normalized_action, (0, 12), 'constant', 0)
+        else:
+            normalized_action_padded = normalized_action
+        unnormalized_action = self._get_unnormalized_action(normalized_action_padded)
 
         if not is_batch:
             unnormalized_action = squeeze_dict_values(unnormalized_action)
