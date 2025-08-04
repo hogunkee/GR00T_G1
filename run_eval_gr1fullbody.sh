@@ -1,26 +1,26 @@
 #!/bin/bash
 TAG=$1
-./scripts/simul_eval.sh 0 gr1_unified/PnPCupToDrawerClose_GR1FullFourierHands_Env ${TAG} &&
-./scripts/simul_eval.sh 0 gr1_unified/PnPPotatoToMicrowaveClose_GR1FullFourierHands_Env ${TAG} &&
-./scripts/simul_eval.sh 0 gr1_unified/PnPMilkToMicrowaveClose_GR1FullFourierHands_Env ${TAG} &&
-./scripts/simul_eval.sh 0 gr1_unified/PnPBottleToCabinetClose_GR1FullFourierHands_Env ${TAG} &&
-./scripts/simul_eval.sh 0 gr1_unified/PnPWineToCabinetClose_GR1FullFourierHands_Env ${TAG} &&
-./scripts/simul_eval.sh 0 gr1_unified/PnPCanToDrawerClose_GR1FullFourierHands_Env ${TAG} &&
-./scripts/simul_eval.sh 0 gr1_unified/PosttrainPnPNovelFromCuttingboardToBasketSplitA_GR1FullFourierHands_Env ${TAG} &&
-./scripts/simul_eval.sh 0 gr1_unified/PosttrainPnPNovelFromCuttingboardToCardboardboxSplitA_GR1FullFourierHands_Env ${TAG} &&
-./scripts/simul_eval.sh 0 gr1_unified/PosttrainPnPNovelFromCuttingboardToPanSplitA_GR1FullFourierHands_Env ${TAG} &&
-./scripts/simul_eval.sh 0 gr1_unified/PosttrainPnPNovelFromCuttingboardToPotSplitA_GR1FullFourierHands_Env ${TAG} &&
-./scripts/simul_eval.sh 0 gr1_unified/PosttrainPnPNovelFromCuttingboardToTieredbasketSplitA_GR1FullFourierHands_Env ${TAG} &&
-./scripts/simul_eval.sh 0 gr1_unified/PosttrainPnPNovelFromPlacematToBasketSplitA_GR1FullFourierHands_Env ${TAG} &&
-./scripts/simul_eval.sh 0 gr1_unified/PosttrainPnPNovelFromPlacematToBowlSplitA_GR1FullFourierHands_Env ${TAG} &&
-./scripts/simul_eval.sh 0 gr1_unified/PosttrainPnPNovelFromPlacematToPlateSplitA_GR1FullFourierHands_Env ${TAG} &&
-./scripts/simul_eval.sh 0 gr1_unified/PosttrainPnPNovelFromPlacematToTieredshelfSplitA_GR1FullFourierHands_Env ${TAG} &&
-./scripts/simul_eval.sh 0 gr1_unified/PosttrainPnPNovelFromPlateToBowlSplitA_GR1FullFourierHands_Env ${TAG} &&
-./scripts/simul_eval.sh 0 gr1_unified/PosttrainPnPNovelFromPlateToCardboardboxSplitA_GR1FullFourierHands_Env ${TAG} &&
-./scripts/simul_eval.sh 0 gr1_unified/PosttrainPnPNovelFromPlateToPanSplitA_GR1FullFourierHands_Env ${TAG} &&
-./scripts/simul_eval.sh 0 gr1_unified/PosttrainPnPNovelFromPlateToPlateSplitA_GR1FullFourierHands_Env ${TAG} &&
-./scripts/simul_eval.sh 0 gr1_unified/PosttrainPnPNovelFromTrayToCardboardboxSplitA_GR1FullFourierHands_Env ${TAG} &&
-./scripts/simul_eval.sh 0 gr1_unified/PosttrainPnPNovelFromTrayToPlateSplitA_GR1FullFourierHands_Env ${TAG} &&
-./scripts/simul_eval.sh 0 gr1_unified/PosttrainPnPNovelFromTrayToPotSplitA_GR1FullFourierHands_Env ${TAG} &&
-./scripts/simul_eval.sh 0 gr1_unified/PosttrainPnPNovelFromTrayToTieredbasketSplitA_GR1FullFourierHands_Env ${TAG} &&
-./scripts/simul_eval.sh 0 gr1_unified/PosttrainPnPNovelFromTrayToTieredshelfSplitA_GR1FullFourierHands_Env ${TAG}
+./scripts/simul_eval.sh 0 robocasa_gr1_full_fourier_hands/PnPCupToDrawerClose_GR1FullFourierHands_Env ${TAG} &&
+./scripts/simul_eval.sh 0 robocasa_gr1_full_fourier_hands/PnPPotatoToMicrowaveClose_GR1FullFourierHands_Env ${TAG} &&
+./scripts/simul_eval.sh 0 robocasa_gr1_full_fourier_hands/PnPMilkToMicrowaveClose_GR1FullFourierHands_Env ${TAG} &&
+./scripts/simul_eval.sh 0 robocasa_gr1_full_fourier_hands/PnPBottleToCabinetClose_GR1FullFourierHands_Env ${TAG} &&
+./scripts/simul_eval.sh 0 robocasa_gr1_full_fourier_hands/PnPWineToCabinetClose_GR1FullFourierHands_Env ${TAG} &&
+./scripts/simul_eval.sh 0 robocasa_gr1_full_fourier_hands/PnPCanToDrawerClose_GR1FullFourierHands_Env ${TAG} &&
+./scripts/simul_eval.sh 0 robocasa_gr1_full_fourier_hands/PosttrainPnPNovelFromCuttingboardToBasketSplitA_GR1FullFourierHands_Env ${TAG} &&
+./scripts/simul_eval.sh 0 robocasa_gr1_full_fourier_hands/PosttrainPnPNovelFromCuttingboardToCardboardboxSplitA_GR1FullFourierHands_Env ${TAG} &&
+./scripts/simul_eval.sh 0 robocasa_gr1_full_fourier_hands/PosttrainPnPNovelFromCuttingboardToPanSplitA_GR1FullFourierHands_Env ${TAG} &&
+./scripts/simul_eval.sh 0 robocasa_gr1_full_fourier_hands/PosttrainPnPNovelFromCuttingboardToPotSplitA_GR1FullFourierHands_Env ${TAG} &&
+./scripts/simul_eval.sh 0 robocasa_gr1_full_fourier_hands/PosttrainPnPNovelFromCuttingboardToTieredbasketSplitA_GR1FullFourierHands_Env ${TAG} &&
+./scripts/simul_eval.sh 0 robocasa_gr1_full_fourier_hands/PosttrainPnPNovelFromPlacematToBasketSplitA_GR1FullFourierHands_Env ${TAG} &&
+./scripts/simul_eval.sh 0 robocasa_gr1_full_fourier_hands/PosttrainPnPNovelFromPlacematToBowlSplitA_GR1FullFourierHands_Env ${TAG} &&
+./scripts/simul_eval.sh 0 robocasa_gr1_full_fourier_hands/PosttrainPnPNovelFromPlacematToPlateSplitA_GR1FullFourierHands_Env ${TAG} &&
+./scripts/simul_eval.sh 0 robocasa_gr1_full_fourier_hands/PosttrainPnPNovelFromPlacematToTieredshelfSplitA_GR1FullFourierHands_Env ${TAG} &&
+./scripts/simul_eval.sh 0 robocasa_gr1_full_fourier_hands/PosttrainPnPNovelFromPlateToBowlSplitA_GR1FullFourierHands_Env ${TAG} &&
+./scripts/simul_eval.sh 0 robocasa_gr1_full_fourier_hands/PosttrainPnPNovelFromPlateToCardboardboxSplitA_GR1FullFourierHands_Env ${TAG} &&
+./scripts/simul_eval.sh 0 robocasa_gr1_full_fourier_hands/PosttrainPnPNovelFromPlateToPanSplitA_GR1FullFourierHands_Env ${TAG} &&
+./scripts/simul_eval.sh 0 robocasa_gr1_full_fourier_hands/PosttrainPnPNovelFromPlateToPlateSplitA_GR1FullFourierHands_Env ${TAG} &&
+./scripts/simul_eval.sh 0 robocasa_gr1_full_fourier_hands/PosttrainPnPNovelFromTrayToCardboardboxSplitA_GR1FullFourierHands_Env ${TAG} &&
+./scripts/simul_eval.sh 0 robocasa_gr1_full_fourier_hands/PosttrainPnPNovelFromTrayToPlateSplitA_GR1FullFourierHands_Env ${TAG} &&
+./scripts/simul_eval.sh 0 robocasa_gr1_full_fourier_hands/PosttrainPnPNovelFromTrayToPotSplitA_GR1FullFourierHands_Env ${TAG} &&
+./scripts/simul_eval.sh 0 robocasa_gr1_full_fourier_hands/PosttrainPnPNovelFromTrayToTieredbasketSplitA_GR1FullFourierHands_Env ${TAG} &&
+./scripts/simul_eval.sh 0 robocasa_gr1_full_fourier_hands/PosttrainPnPNovelFromTrayToTieredshelfSplitA_GR1FullFourierHands_Env ${TAG}
