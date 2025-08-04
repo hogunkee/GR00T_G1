@@ -182,12 +182,16 @@ def main(args: ArgsConfig):
         # - obs: state.left_hand: (1, 6)
         # - obs: state.right_hand: (1, 6)
         # - obs: state.waist: (1, 3)
+        # - obs: state.left_leg: (1, 6)
+        # - obs: state.right_leg: (1, 6)
 
         # - action: action.left_arm: (16, 7)
         # - action: action.right_arm: (16, 7)
         # - action: action.left_hand: (16, 6)
         # - action: action.right_hand: (16, 6)
         # - action: action.waist: (16, 3)
+        # - action: action.left_leg: (16, 6)
+        # - action: action.right_leg: (16, 6)
         obs = {
             "video.ego_view": np.random.randint(0, 256, (1, 256, 256, 3), dtype=np.uint8),
             "state.left_arm": np.random.rand(1, 7),
@@ -195,6 +199,8 @@ def main(args: ArgsConfig):
             "state.left_hand": np.random.rand(1, 6),
             "state.right_hand": np.random.rand(1, 6),
             "state.waist": np.random.rand(1, 3),
+            "state.left_leg": np.random.rand(1, 6),
+            "state.right_leg": np.random.rand(1, 6),
             "annotation.human.action.task_description": ["do your thing!"],
         }
 
