@@ -219,7 +219,7 @@ class MultiVideoRecordingWrapper(gym.Wrapper):
             for cidx in range(len(self.cameras)):
                 original_filestem = self.file_paths[cidx].stem
                 new_filestem = f"{original_filestem}_success{int(self.is_success)}"
-                new_file_path = [self.video_dir / f"{new_filestem}.mp4"
+                new_file_path = self.video_dir / f"{new_filestem}.mp4"
                 os.rename(self.file_paths[cidx], new_file_path)
 
         self.is_success = False

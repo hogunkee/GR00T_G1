@@ -17,6 +17,11 @@ from enum import Enum
 
 
 class EmbodimentTag(Enum):
+    G1 = "g1"
+    """
+    The G1 dataset.
+    """
+
     GR1 = "gr1"
     """
     The GR1 dataset.
@@ -44,4 +49,5 @@ EMBODIMENT_TAG_MAPPING = {
     EmbodimentTag.OXE_DROID.value: 17,
     EmbodimentTag.AGIBOT_GENIE1.value: 26,
     EmbodimentTag.GR1.value: 24,
+    EmbodimentTag.G1.value: 24,
 }
