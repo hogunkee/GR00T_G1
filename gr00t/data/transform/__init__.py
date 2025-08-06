@@ -25,6 +25,7 @@ from .state_action import (
     StateActionSinCosTransform,
     StateActionToTensor,
     StateActionTransform,
+    StateActionRetarget,
 )
 from .video import (
     VideoColorJitter,

@@ -32,7 +32,7 @@ from gr00t.data.transform.base import InvertibleModalityTransform, ModalityTrans
 # [index1, index0, middle1, middle0, thumb1, thumb0, 0]
 # left:  [-, -, -, -, +, +, +]
 # right: [+, +, +, +, -, -, -]
-class RetargetStateAction(InvertibleModalityTransform):
+class StateActionRetarget(InvertibleModalityTransform):
     # Apply: From G1 to GR1
     def apply(self, data: dict[str, Any]) -> dict[str, Any]:
         for key in self.apply_to:
