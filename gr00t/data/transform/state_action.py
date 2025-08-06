@@ -26,6 +26,104 @@ from gr00t.data.schema import DatasetMetadata, RotationType, StateActionMetadata
 from gr00t.data.transform.base import InvertibleModalityTransform, ModalityTransform
 
 
+# GR1 hands
+# [pinky, ring, middle, index, thumb, pi/2]
+# G1 hands
+# [index1, index0, middle1, middle0, thumb1, thumb0, 0]
+# left:  [-, -, -, -, +, +, +]
+# right: [+, +, +, +, -, -, -]
+class RetargetStateAction(InvertibleModalityTransform):
+    # Apply: From G1 to GR1
+    def apply(self, data: dict[str, Any]) -> dict[str, Any]:
+        for key in self.apply_to:
+            if key not in data:
+                continue
+            if 'left_hand' in key:
+                value = data[key]
+                index1 = -value[:,0]
+                index0 = -value[:,1]
+                middle1 = -value[:,2]
+                middle0 = -value[:,3]
+                thumb1 = value[:,4]
+                thumb0 = value[:,5]
+                theta = value[:,6]
+                #index1, index0, middle1, middle0, thumb1, thumb0, theta = value
+                new_index = (index0 + index1) / 2
+                new_middle = new_index
+                new_ring = (middle0 + middle1) / 2
+                new_pinky = new_ring
+                new_thumb = (thumb0 + thumb1) / 2
+                new_theta = theta + np.pi/2
+                new_value = [new_pinky, new_ring, new_middle, new_index, new_thumb, new_theta]
+                data[key] = np.concatenate(new_value, -1)
+            if 'right_hand' in key:
+                value = data[key]
+                index1 = value[:,0]
+                index0 = value[:,1]
+                middle1 = value[:,2]
+                middle0 = value[:,3]
+                thumb1 = -value[:,4]
+                thumb0 = -value[:,5]
+                theta = -value[:,6]
+                #index1, index0, middle1, middle0, thumb1, thumb0, theta = value
+                new_index = (index0 + index1) / 2
+                new_middle = new_index
+                new_ring = (middle0 + middle1) / 2
+                new_pinky = new_ring
+                new_thumb = (thumb0 + thumb1) / 2
+                new_theta = theta + np.pi/2
+                new_value = [new_pinky, new_ring, new_middle, new_index, new_thumb, new_theta]
+                data[key] = np.concatenate(new_value, -1)
+            if 'left_arm' in key:
+                value = data[key]
+                value[:,4] = value[:,4] - np.pi/2
+                data[key] = value
+            if 'right_arm' in key:
+                value = data[key]
+                value[:,4] = value[:,4] - np.pi/2
+                data[key] = value
+
+    # Unapply: From GR1 to G1
+    def unapply(self, data: dict[str, Any]) -> dict[str, Any]:
+        for key in self.apply_to:
+            if key not in data:
+                continue
+            if 'left_hand' in key:
+                value = data[key]
+                pinky = value[:,0]
+                ring = value[:,1]
+                middle = value[:,2]
+                index = value[:,3]
+                thumb = value[:,4]
+                theta = value[:,5]
+                new_index0 = - (index + middle) / 2
+                new_index1 = - (index + middle) / 2
+                new_middle0 = - (ring + pinky) / 2
+                new_middle1 = - (ring + pinky) / 2
+                new_thumb0 = thumb
+                new_thumb1 = thumb
+                new_theta = theta - np.pi/2
+                new_value = [new_index1, new_index0, new_middle1, new_middle0, new_thumb1, new_thumb0, new_theta]
+                data[key] = np.concatenate(new_value, -1)
+            if 'right_hand' in key:
+                value = data[key]
+                pinky = value[:,0]
+                ring = value[:,1]
+                middle = value[:,2]
+                index = value[:,3]
+                thumb = value[:,4]
+                theta = value[:,5]
+                new_index0 = (index + middle) / 2
+                new_index1 = (index + middle) / 2
+                new_middle0 = (ring + pinky) / 2
+                new_middle1 = (ring + pinky) / 2
+                new_thumb0 = - thumb
+                new_thumb1 = - thumb
+                new_theta = - theta - np.pi/2
+                new_value = [new_index1, new_index0, new_middle1, new_middle0, new_thumb1, new_thumb0, new_theta]
+                data[key] = np.concatenate(new_value, -1)
+
+
 class RotationTransform:
     """Adapted from https://github.com/real-stanford/diffusion_policy/blob/548a52bbb105518058e27bf34dcf90bf6f73681a/diffusion_policy/model/common/rotation_transformer.py"""
 
