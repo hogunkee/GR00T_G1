@@ -112,6 +112,7 @@ class ComposedModalityTransform(ModalityTransform):
             try:
                 data = transform(data)
             except Exception as e:
+                print(i, transform)
                 raise ValueError(f"Error applying transform {i} to data: {e}") from e
         return data
 

@@ -98,6 +98,12 @@ class SimulationInferenceClient(BaseInferenceClient, BasePolicy):
             observations["video.ego_view"] = observations.pop(
                 "video.ego_view_bg_crop_pad_res256_freq20"
             )
+        if "video.rs_view_pad_res256_freq20" in observations:
+            observations["video.rs_view"] = observations.pop(
+                "video.rs_view_pad_res256_freq20"
+            )
+        #else:
+        #    observations["video.rs_view"] = np.zeros_like(observations["video.ego_view"])
         return self.call_endpoint("get_action", observations)
 
     def get_modality_config(self) -> Dict[str, ModalityConfig]:

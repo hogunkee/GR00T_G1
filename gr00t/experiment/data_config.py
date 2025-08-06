@@ -22,6 +22,7 @@ from gr00t.data.transform.state_action import (
     StateActionSinCosTransform,
     StateActionToTensor,
     StateActionTransform,
+    StateActionRetarget,
 )
 from gr00t.data.transform.video import (
     VideoColorJitter,
@@ -286,6 +287,7 @@ class Dex31G1ArmsOnlyDataConfig(BaseDataConfig):
             ),
             VideoToNumpy(apply_to=self.video_keys),
             # state transforms
+            StateActionRetarget(apply_to=self.state_keys),
             StateActionToTensor(apply_to=self.state_keys),
             StateActionSinCosTransform(apply_to=self.state_keys),
             #StateActionTransform(
@@ -293,6 +295,7 @@ class Dex31G1ArmsOnlyDataConfig(BaseDataConfig):
             #    normalization_modes={key: "min_max" for key in self.state_keys},
             #),
             # action transforms
+            StateActionRetarget(apply_to=self.action_keys),
             StateActionToTensor(apply_to=self.action_keys),
             StateActionTransform(
                 apply_to=self.action_keys,
@@ -1195,8 +1198,8 @@ DATA_CONFIG_MAP = {
     "so100_dualcam": So100DualCamDataConfig(),
     "unitree_g1": UnitreeG1DataConfig(),
     "unitree_g1_full_body": UnitreeG1FullBodyDataConfig(),
-    "dex31_g1_arms_only": Dex31ArmsOnlyDataConfig(),
-    "dex31_g1_arms_waist": Dex31ArmsWaistDataConfig(),
+    "dex31_g1_arms_only": Dex31G1ArmsOnlyDataConfig(),
+    "dex31_g1_arms_waist": Dex31G1ArmsWaistDataConfig(),
     "dex31_g1_full_body": Dex31G1FullBodyDataConfig(),
     "oxe_droid": OxeDroidDataConfig(),
     "agibot_genie1": AgibotGenie1DataConfig(),

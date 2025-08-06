@@ -35,18 +35,20 @@ from gr00t.data.transform.base import InvertibleModalityTransform, ModalityTrans
 class StateActionRetarget(InvertibleModalityTransform):
     # Apply: From G1 to GR1
     def apply(self, data: dict[str, Any]) -> dict[str, Any]:
+        #print("apply to:", self.apply_to)
+        #print("data:", data)
         for key in self.apply_to:
             if key not in data:
                 continue
             if 'left_hand' in key:
                 value = data[key]
-                index1 = -value[:,0]
-                index0 = -value[:,1]
-                middle1 = -value[:,2]
-                middle0 = -value[:,3]
-                thumb1 = value[:,4]
-                thumb0 = value[:,5]
-                theta = value[:,6]
+                index1 = -value[:,:,0:1]
+                index0 = -value[:,:,1:2]
+                middle1 = -value[:,:,2:3]
+                middle0 = -value[:,:,3:4]
+                thumb1 = value[:,:,4:5]
+                thumb0 = value[:,:,5:6]
+                theta = value[:,:,6:7]
                 #index1, index0, middle1, middle0, thumb1, thumb0, theta = value
                 new_index = (index0 + index1) / 2
                 new_middle = new_index
@@ -58,13 +60,13 @@ class StateActionRetarget(InvertibleModalityTransform):
                 data[key] = np.concatenate(new_value, -1)
             if 'right_hand' in key:
                 value = data[key]
-                index1 = value[:,0]
-                index0 = value[:,1]
-                middle1 = value[:,2]
-                middle0 = value[:,3]
-                thumb1 = -value[:,4]
-                thumb0 = -value[:,5]
-                theta = -value[:,6]
+                index1 = value[:,:,0:1]
+                index0 = value[:,:,1:2]
+                middle1 = value[:,:,2:3]
+                middle0 = value[:,:,3:4]
+                thumb1 = -value[:,:,4:5]
+                thumb0 = -value[:,:,5:6]
+                theta = -value[:,:,6:7]
                 #index1, index0, middle1, middle0, thumb1, thumb0, theta = value
                 new_index = (index0 + index1) / 2
                 new_middle = new_index
@@ -76,12 +78,13 @@ class StateActionRetarget(InvertibleModalityTransform):
                 data[key] = np.concatenate(new_value, -1)
             if 'left_arm' in key:
                 value = data[key]
-                value[:,4] = value[:,4] - np.pi/2
+                value[:,:,4] = value[:,:,4] - np.pi/2
                 data[key] = value
             if 'right_arm' in key:
                 value = data[key]
-                value[:,4] = value[:,4] - np.pi/2
+                value[:,:,4] = value[:,:,4] - np.pi/2
                 data[key] = value
+        return data
 
     # Unapply: From GR1 to G1
     def unapply(self, data: dict[str, Any]) -> dict[str, Any]:
@@ -90,12 +93,12 @@ class StateActionRetarget(InvertibleModalityTransform):
                 continue
             if 'left_hand' in key:
                 value = data[key]
-                pinky = value[:,0]
-                ring = value[:,1]
-                middle = value[:,2]
-                index = value[:,3]
-                thumb = value[:,4]
-                theta = value[:,5]
+                pinky = value[:,:,0:1]
+                ring = value[:,:,1:2]
+                middle = value[:,:,2:3]
+                index = value[:,:,3:4]
+                thumb = value[:,:,4:5]
+                theta = value[:,:,5:6]
                 new_index0 = - (index + middle) / 2
                 new_index1 = - (index + middle) / 2
                 new_middle0 = - (ring + pinky) / 2
@@ -107,12 +110,12 @@ class StateActionRetarget(InvertibleModalityTransform):
                 data[key] = np.concatenate(new_value, -1)
             if 'right_hand' in key:
                 value = data[key]
-                pinky = value[:,0]
-                ring = value[:,1]
-                middle = value[:,2]
-                index = value[:,3]
-                thumb = value[:,4]
-                theta = value[:,5]
+                pinky = value[:,:,0:1]
+                ring = value[:,:,1:2]
+                middle = value[:,:,2:3]
+                index = value[:,:,3:4]
+                thumb = value[:,:,4:5]
+                theta = value[:,:,5:6]
                 new_index0 = (index + middle) / 2
                 new_index1 = (index + middle) / 2
                 new_middle0 = (ring + pinky) / 2
@@ -122,6 +125,7 @@ class StateActionRetarget(InvertibleModalityTransform):
                 new_theta = - theta - np.pi/2
                 new_value = [new_index1, new_index0, new_middle1, new_middle0, new_thumb1, new_thumb0, new_theta]
                 data[key] = np.concatenate(new_value, -1)
+        return data
 
 
 class RotationTransform:

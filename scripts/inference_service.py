@@ -192,17 +192,30 @@ def main(args: ArgsConfig):
         # - action: action.waist: (16, 3)
         # - action: action.left_leg: (16, 6)
         # - action: action.right_leg: (16, 6)
-        obs = {
-            "video.ego_view": np.random.randint(0, 256, (1, 256, 256, 3), dtype=np.uint8),
-            "state.left_arm": np.random.rand(1, 7),
-            "state.right_arm": np.random.rand(1, 7),
-            "state.left_hand": np.random.rand(1, 6),
-            "state.right_hand": np.random.rand(1, 6),
-            "state.waist": np.random.rand(1, 3),
-            "state.left_leg": np.random.rand(1, 6),
-            "state.right_leg": np.random.rand(1, 6),
-            "annotation.human.action.task_description": ["do your thing!"],
-        }
+        if args.embodiment_tag=='g1':
+            obs = {
+                "video.rs_view": np.random.randint(0, 256, (1, 256, 256, 3), dtype=np.uint8),
+                "state.left_arm": np.random.rand(1, 7),
+                "state.right_arm": np.random.rand(1, 7),
+                "state.left_hand": np.random.rand(1, 6),
+                "state.right_hand": np.random.rand(1, 6),
+                "state.waist": np.random.rand(1, 3),
+                "state.left_leg": np.random.rand(1, 6),
+                "state.right_leg": np.random.rand(1, 6),
+                "annotation.human.action.task_description": ["do your thing!"],
+            }
+        if args.embodiment_tag=='gr1':
+            obs = {
+                "video.ego_view": np.random.randint(0, 256, (1, 256, 256, 3), dtype=np.uint8),
+                "state.left_arm": np.random.rand(1, 7),
+                "state.right_arm": np.random.rand(1, 7),
+                "state.left_hand": np.random.rand(1, 6),
+                "state.right_hand": np.random.rand(1, 6),
+                "state.waist": np.random.rand(1, 3),
+                "state.left_leg": np.random.rand(1, 6),
+                "state.right_leg": np.random.rand(1, 6),
+                "annotation.human.action.task_description": ["do your thing!"],
+            }
 
         if args.http_server:
             action = _example_http_client_call(obs, args.host, args.port, args.api_token)
