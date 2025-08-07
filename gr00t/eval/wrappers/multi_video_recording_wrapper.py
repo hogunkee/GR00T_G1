@@ -78,7 +78,7 @@ class MultiVideoRecorder:
         self.input_pix_fmt = input_pix_fmt
         self.kwargs = kwargs
         # runtime set
-        self.cameras = ['bird', 'front', 'back', 'side']
+        self.cameras = ['rs', 'bird', 'front', 'back', 'side']
         self._reset_state()
 
     def _reset_state(self):
@@ -185,7 +185,7 @@ class MultiVideoRecordingWrapper(gym.Wrapper):
         mode="rgb_array",
         video_dir: Path | None = None,
         steps_per_render=1,
-        cameras=['birdview', 'frontview', 'backview', 'sideview'],
+        cameras=['rs_view', 'birdview', 'frontview', 'backview', 'sideview'],
         **kwargs,
     ):
         """
