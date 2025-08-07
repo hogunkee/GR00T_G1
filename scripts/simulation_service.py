@@ -15,6 +15,7 @@
 
 import argparse
 import os
+from pathlib import Path
 
 import numpy as np
 
@@ -71,6 +72,9 @@ if __name__ == "__main__":
     parser.add_argument("--log", action="store_true", help="Save the log.")
     # multi-cameras  
     parser.add_argument("--multi_video", action="store_true", help="Save the multi camera images.")
+    # save trajectory data
+    parser.add_argument("--save_data", action="store_true", help="Save trajectory data.")
+    parser.add_argument("--save_dir", type=str, default="data/trajectories/")
     args = parser.parse_args()
 
     if args.server:
@@ -106,7 +110,17 @@ if __name__ == "__main__":
 
         # Run the simulation
         print(f"Running simulation for {args.env_name}...")
-        env_name, episode_successes = simulation_client.run_simulation(config)
+        if args.save_data:
+            env_name, episode_successes, data_actions, data_obs = simulation_client.run_simulation(config)
+
+            # save trajectory data
+            save_dir = Path(config.save_dir)
+            save_dir.mkdir(parents=True, exist_ok=True)
+            num_data = len([f for f in os.listdir(save_dir) if "action_" in f])
+            np.savez_compressed(save_dir / "action_%3d.npz"%num_data, **data_actions)
+            np.savez_compressed(save_dir / "obs_%3d.npz"%num_data, **data_obs)
+        else:
+            env_name, episode_successes = simulation_client.run_simulation(config)
 
         # Print results
         print(f"Results for {env_name}:")

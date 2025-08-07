@@ -80,6 +80,7 @@ class SimulationConfig:
     video: VideoConfig = field(default_factory=VideoConfig)
     multistep: MultiStepConfig = field(default_factory=MultiStepConfig)
     multi_video: bool = False
+    save_data: bool = False
 
 
 class SimulationInferenceClient(BaseInferenceClient, BasePolicy):
@@ -141,10 +142,29 @@ class SimulationInferenceClient(BaseInferenceClient, BasePolicy):
         episode_successes = []
         # Initial environment reset
         obs, _ = self.env.reset()
+        # Save state, action trajectories
+        # { '{env_idx}_{ep_num}' : (T, ...), }
+        current_episodes = [0] * config.n_envs
+        if config.save_data:
+            log_actions = {}
+            log_obs = {}
         # Main simulation loop
         while completed_episodes < config.n_episodes:
             # Process observations and get actions from the server
             actions = self._get_actions_from_server(obs)
+            # obs[key_obs] : (num_env, ...)
+            # actions[key_joint] : (num_env, 16, dim_joint)
+            if config.save_data:
+                for env_idx in range(config.n_envs):
+                    current_env_action = {k:v[env_idx][np.newaxis, ...] for k,v in actions.items()}
+                    current_env_obs = {k:v[env_idx][np.newaxis, ...] for k,v in obs.items()}
+                    cep = current_episodes[env_idx]
+                    key = '%d_%d' %(env_idx,cep)
+                    if key not in log_actions:
+                        log_actions[key] = []
+                        log_obs[key] = []
+                    log_actions[key].append(current_env_action)
+                    log_obs[key].append(current_env_obs)
             # Step the environment
             next_obs, rewards, terminations, truncations, env_infos = self.env.step(actions)
             # Update episode tracking
@@ -161,18 +181,28 @@ class SimulationInferenceClient(BaseInferenceClient, BasePolicy):
                     # Reset trackers for this environment
                     current_rewards[env_idx] = 0
                     current_lengths[env_idx] = 0
+                    current_episodes[env_idx] += 1
             obs = next_obs
         # Clean up
         self.env.reset()
         self.env.close()
         self.env = None
+
+        # Save collected trajetory data
+        if config.save_data:
+            data_actions = {k:np.concatenate(v, 0) for k,v in log_actions.items()}
+            data_obs = {k:np.concatenate(v, 0) for k,v in log_obs.items()}
+
         print(
             f"Collecting {config.n_episodes} episodes took {time.time() - start_time:.2f} seconds"
         )
         assert (
             len(episode_successes) >= config.n_episodes
         ), f"Expected at least {config.n_episodes} episodes, got {len(episode_successes)}"
-        return config.env_name, episode_successes
+        if config.save_data:
+            return config.env_name, episode_successes, data_actions, data_obs
+        else:
+            return config.env_name, episode_successes
 
     def _get_actions_from_server(self, observations: Dict[str, Any]) -> Dict[str, Any]:
         """Process observations and get actions from the inference server."""
