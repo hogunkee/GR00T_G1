@@ -106,6 +106,7 @@ if __name__ == "__main__":
                 n_action_steps=args.n_action_steps, max_episode_steps=args.max_episode_steps
             ),
             multi_video=args.multi_video,
+            save_data=args.save_data,
         )
 
         # Run the simulation

@@ -156,8 +156,8 @@ class SimulationInferenceClient(BaseInferenceClient, BasePolicy):
             # actions[key_joint] : (num_env, 16, dim_joint)
             if config.save_data:
                 for env_idx in range(config.n_envs):
-                    current_env_action = {k:v[env_idx][np.newaxis, ...] for k,v in actions.items()}
-                    current_env_obs = {k:v[env_idx][np.newaxis, ...] for k,v in obs.items()}
+                    current_env_action = {k:v[env_idx] if type(v[env_idx])==str else v[env_idx][np.newaxis, ...] for k,v in actions.items()}
+                    current_env_obs = {k:v[env_idx] if type(v[env_idx])==str else v[env_idx][np.newaxis, ...] for k,v in obs.items()}
                     cep = current_episodes[env_idx]
                     key = '%d_%d' %(env_idx,cep)
                     if key not in log_actions:
@@ -190,8 +190,10 @@ class SimulationInferenceClient(BaseInferenceClient, BasePolicy):
 
         # Save collected trajetory data
         if config.save_data:
-            data_actions = {k:np.concatenate(v, 0) for k,v in log_actions.items()}
-            data_obs = {k:np.concatenate(v, 0) for k,v in log_obs.items()}
+            for k in log_actions.keys():
+                print(k, log_actions[k])
+            data_actions = {k:v if type(v[0])==str else np.concatenate(v, 0) for k,v in log_actions.items()}
+            data_obs = {k:v if type(v[0])==str else np.concatenate(v, 0) for k,v in log_obs.items()}
 
         print(
             f"Collecting {config.n_episodes} episodes took {time.time() - start_time:.2f} seconds"
