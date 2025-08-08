@@ -154,8 +154,23 @@ class SimulationInferenceClient(BaseInferenceClient, BasePolicy):
             actions = self._get_actions_from_server(obs)
             # obs[key_obs] : (num_env, ...)
             # actions[key_joint] : (num_env, 16, dim_joint)
+            if False:
+                print()
+                print("actions:")
+                print(actions.keys())
+                for k in actions.keys():
+                    try: print(k, actions[k].shape)
+                    except: print(actions[k])
+                print()
+                print("obs:")
+                print(obs.keys())
+                for k in obs.keys():
+                    try: print(k, obs[k].shape)
+                    except: print(obs[k])
+                print()
             if config.save_data:
                 for env_idx in range(config.n_envs):
+                    #print(env_idx, list(actions.values())[0][env_idx])
                     current_env_action = {k:v[env_idx] if type(v[env_idx])==str else v[env_idx][np.newaxis, ...] for k,v in actions.items()}
                     current_env_obs = {k:v[env_idx] if type(v[env_idx])==str else v[env_idx][np.newaxis, ...] for k,v in obs.items()}
                     cep = current_episodes[env_idx]
@@ -165,6 +180,12 @@ class SimulationInferenceClient(BaseInferenceClient, BasePolicy):
                         log_obs[key] = []
                     log_actions[key].append(current_env_action)
                     log_obs[key].append(current_env_obs)
+                    #print("current obs")
+                    #print(current_env_obs.keys())
+                    #for k in current_env_obs.keys():
+                    #    try: print(current_env_obs[k].shape)
+                    #    except: print(current_env_obs[k])
+                    #print()
             # Step the environment
             next_obs, rewards, terminations, truncations, env_infos = self.env.step(actions)
             # Update episode tracking
@@ -190,10 +211,42 @@ class SimulationInferenceClient(BaseInferenceClient, BasePolicy):
 
         # Save collected trajetory data
         if config.save_data:
-            for k in log_actions.keys():
-                print(k, log_actions[k])
-            data_actions = {k:v if type(v[0])==str else np.concatenate(v, 0) for k,v in log_actions.items()}
-            data_obs = {k:v if type(v[0])==str else np.concatenate(v, 0) for k,v in log_obs.items()}
+            action_keys = ['action.left_arm', 'action.right_arm', 'action.left_hand', 'action.right_hand', 'action.waist']
+            obs_keys = ['annotation.human.coarse_action', 'state.left_arm', 'state.left_hand', 'state.right_arm', 'state.right_hand', 'state.waist', 'video.ego_view_pad_res256_freq20', 'video.world_view', 'video.ego_view', 'video.rs_view']
+            data_actions = {}
+            for ep_idx, ep_actions in log_actions.items():
+                data_actions[ep_idx] = {}
+                for k in action_keys:
+                    data_actions[ep_idx][k] = []
+                    for ep_act in ep_actions:
+                        data_actions[ep_idx][k].append(ep_act[k])
+                    data_actions[ep_idx][k] = np.concatenate(data_actions[ep_idx][k], 0)
+            data_obs = {}
+            for ep_idx, ep_obs in log_obs.items():
+                data_obs[ep_idx] = {}
+                for k in obs_keys:
+                    if not k in ep_obs[0]: continue
+                    data_obs[ep_idx][k] = []
+                    for ep_ob in ep_obs:
+                        data_obs[ep_idx][k].append(ep_ob[k])
+                    if not 'annotation' in k:
+                        try:
+                            data_obs[ep_idx][k] = np.concatenate(data_obs[ep_idx][k], 0)
+                        except:
+                            print(ep_idx, k, data_obs[ep_idx][k])
+                            exit()
+
+            if False:
+                print("data_obs:")
+                for k1 in data_obs.keys():
+                    for k2 in data_obs[k1].keys():
+                        try: print(k2, data_obs[k1][k2].shape)
+                        except: print(k2, data_obs[k1][k2])
+                print("data_actions:")
+                for k1 in data_actions.keys():
+                    for k2 in data_actions[k1].keys():
+                        try: print(k2, data_actions[k1][k2].shape)
+                        except: print(k2, data_actions[k1][k2])
 
         print(
             f"Collecting {config.n_episodes} episodes took {time.time() - start_time:.2f} seconds"

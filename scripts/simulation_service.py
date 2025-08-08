@@ -15,9 +15,10 @@
 
 import argparse
 import os
-from pathlib import Path
 
+import pickle
 import numpy as np
+from pathlib import Path
 
 from gr00t.eval.robot import RobotInferenceServer
 from gr00t.eval.simulation import (
@@ -115,11 +116,15 @@ if __name__ == "__main__":
             env_name, episode_successes, data_actions, data_obs = simulation_client.run_simulation(config)
 
             # save trajectory data
-            save_dir = Path(config.save_dir)
+            save_dir = Path(args.save_dir)
             save_dir.mkdir(parents=True, exist_ok=True)
             num_data = len([f for f in os.listdir(save_dir) if "action_" in f])
-            np.savez_compressed(save_dir / "action_%3d.npz"%num_data, **data_actions)
-            np.savez_compressed(save_dir / "obs_%3d.npz"%num_data, **data_obs)
+            with open(save_dir / ("action_%03d.pkl"%num_data), 'wb') as f:
+                pickle.dump(data_actions, f)
+            with open(save_dir / ("obs_%03d.pkl"%num_data), 'wb') as f:
+                pickle.dump(data_obs, f)
+            #np.savez_compressed(save_dir / ("action_%03d.npz"%num_data), **data_actions)
+            #np.savez_compressed(save_dir / ("obs_%03d.npz"%num_data), **data_obs)
         else:
             env_name, episode_successes = simulation_client.run_simulation(config)
 
