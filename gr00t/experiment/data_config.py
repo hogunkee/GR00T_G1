@@ -143,16 +143,8 @@ class FourierGr1ArmsOnlyDataConfig(BaseDataConfig):
                 normalization_modes={key: "min_max" for key in self.action_keys},
             ),
             # concat transforms
-            ConcatTransform(
-                action_concat_order=self.action_keys,
-            ),
+            #ConcatTransform( action_concat_order=self.action_keys,),
             # model-specific transform
-            GR00TTransform(
-                state_horizon=len(self.observation_indices),
-                action_horizon=len(self.action_indices),
-                max_state_dim=64,
-                max_action_dim=32,
-            ),
         ]
         return ComposedModalityTransform(transforms=transforms)
 
@@ -349,16 +341,8 @@ class Dex31G1ArmsOnlyDataConfig(BaseDataConfig):
                 normalization_modes={key: "min_max" for key in self.action_keys},
             ),
             # concat transforms
-            ConcatTransform(
-                action_concat_order=self.action_keys,
-            ),
+            #ConcatTransform( action_concat_order=self.action_keys,),
             # model-specific transform
-            GR00TTransform(
-                state_horizon=len(self.observation_indices),
-                action_horizon=len(self.action_indices),
-                max_state_dim=64,  #TODO
-                max_action_dim=32, #TODO
-            ),
         ]
         return ComposedModalityTransform(transforms=transforms)
 

@@ -21,6 +21,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import gymnasium as gym
 import numpy as np
 import pickle
+import torch
 
 # Required for robocasa environments
 import robocasa  # noqa: F401
@@ -94,13 +95,13 @@ class SimulationInferenceClient(BaseInferenceClient, BasePolicy):
         self.env = None
 
         # G1 modality tansform
-        g1_data_config = DATA_CONFIG_MAP["dex31_g1_arms_waist"]
-        self.g1_action_transform = g1_data_config.action_transform()
+        self.g1_data_config = DATA_CONFIG_MAP["dex31_g1_arms_waist"]
+        self.g1_action_transform = self.g1_data_config.action_transform()
         self.g1_action_transform.set_metadata(g1_metadata)
 
         # GR1 modality transform
-        gr1_data_config = DATA_CONFIG_MAP["fourier_gr1_arms_waist"]
-        self.gr1_action_transform = gr1_data_config.action_transform()
+        self.gr1_data_config = DATA_CONFIG_MAP["fourier_gr1_arms_waist"]
+        self.gr1_action_transform = self.gr1_data_config.action_transform()
         self.gr1_action_transform.set_metadata(gr1_metadata)
 
     def load_trajectory(self, traj_path):
@@ -116,7 +117,8 @@ class SimulationInferenceClient(BaseInferenceClient, BasePolicy):
         return
 
     def transfer_action(self, gr1_action):
-        normalized_action = self.gr1_action_transform.apply(gr1_action)
+        data = self.gr1_action_transform.apply(gr1_action)
+        normalized_action = torch.cat([data.pop(key) for key in self.gr1_data_config.action_keys], dim=-1)
         #normalized_action = self.gr1_action_transform.unapply({"action": gr1_action})
         g1_action = self.g1_action_transform.unapply({"action": normalized_action})
         return g1_action

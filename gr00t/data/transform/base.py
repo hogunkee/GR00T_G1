@@ -119,9 +119,6 @@ class ComposedModalityTransform(ModalityTransform):
     def unapply(self, data: dict[str, Any]) -> dict[str, Any]:
         for i, transform in enumerate(reversed(self.transforms)):
             if isinstance(transform, InvertibleModalityTransform):
-                print(i, transform)
-                print(data)
-                print()
                 try:
                     data = transform.unapply(data)
                 except Exception as e:
