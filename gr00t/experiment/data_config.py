@@ -134,6 +134,28 @@ class FourierGr1ArmsOnlyDataConfig(BaseDataConfig):
         ]
         return ComposedModalityTransform(transforms=transforms)
 
+    def action_transform(self) -> ModalityTransform:
+        transforms = [
+            # action transforms
+            StateActionToTensor(apply_to=self.action_keys),
+            StateActionTransform(
+                apply_to=self.action_keys,
+                normalization_modes={key: "min_max" for key in self.action_keys},
+            ),
+            # concat transforms
+            ConcatTransform(
+                action_concat_order=self.action_keys,
+            ),
+            # model-specific transform
+            GR00TTransform(
+                state_horizon=len(self.observation_indices),
+                action_horizon=len(self.action_indices),
+                max_state_dim=64,
+                max_action_dim=32,
+            ),
+        ]
+        return ComposedModalityTransform(transforms=transforms)
+
 
 ###########################################################################################
 
@@ -317,6 +339,29 @@ class Dex31G1ArmsOnlyDataConfig(BaseDataConfig):
         ]
         return ComposedModalityTransform(transforms=transforms)
 
+    def action_transform(self) -> ModalityTransform:
+        transforms = [
+            # action transforms
+            StateActionRetarget(apply_to=self.action_keys),
+            StateActionToTensor(apply_to=self.action_keys),
+            StateActionTransform(
+                apply_to=self.action_keys,
+                normalization_modes={key: "min_max" for key in self.action_keys},
+            ),
+            # concat transforms
+            ConcatTransform(
+                action_concat_order=self.action_keys,
+            ),
+            # model-specific transform
+            GR00TTransform(
+                state_horizon=len(self.observation_indices),
+                action_horizon=len(self.action_indices),
+                max_state_dim=64,  #TODO
+                max_action_dim=32, #TODO
+            ),
+        ]
+        return ComposedModalityTransform(transforms=transforms)
+
 
 class Dex31G1ArmsWaistDataConfig(Dex31G1ArmsOnlyDataConfig):
     video_keys = ["video.rs_view"]
@@ -342,6 +387,9 @@ class Dex31G1ArmsWaistDataConfig(Dex31G1ArmsOnlyDataConfig):
         return super().modality_config()
 
     def transform(self):
+        return super().transform()
+
+    def action_transform(self):
         return super().transform()
 
 
@@ -969,6 +1017,9 @@ class FourierGr1ArmsWaistDataConfig(FourierGr1ArmsOnlyDataConfig):
 
     def transform(self):
         return super().transform()
+
+    def action_transform(self):
+        return super().action_transform()
 
 
 ###########################################################################################

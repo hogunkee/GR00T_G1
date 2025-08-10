@@ -95,15 +95,13 @@ class SimulationInferenceClient(BaseInferenceClient, BasePolicy):
 
         # G1 modality tansform
         g1_data_config = DATA_CONFIG_MAP["dex31_g1_arms_waist"]
-        g1_modality_config = g1_data_config.modality_config()
-        self.g1_modality_transform = g1_data_config.transform()
-        self.g1_modality_transform.set_metadata(g1_metadata)
+        self.g1_action_transform = g1_data_config.action_transform()
+        self.g1_action_transform.set_metadata(g1_metadata)
 
         # GR1 modality transform
         gr1_data_config = DATA_CONFIG_MAP["fourier_gr1_arms_waist"]
-        gr1_modality_config = gr1_data_config.modality_config()
-        self.gr1_modality_transform = gr1_data_config.transform()
-        self.gr1_modality_transform.set_metadata(gr1_metadata)
+        self.gr1_action_transform = gr1_data_config.action_transform()
+        self.gr1_action_transform.set_metadata(gr1_metadata)
 
     def load_trajectory(self, traj_path):
         # load trajectory data
@@ -118,9 +116,9 @@ class SimulationInferenceClient(BaseInferenceClient, BasePolicy):
         return
 
     def transfer_action(self, gr1_action):
-        normalized_action = self.gr1_modality_transform.apply(gr1_action)
-        #normalized_action = self.gr1_modality_transform.unapply({"action": gr1_action})
-        g1_action = self.g1_modality_transform.unapply({"action": normalized_action})
+        normalized_action = self.gr1_action_transform.apply(gr1_action)
+        #normalized_action = self.gr1_action_transform.unapply({"action": gr1_action})
+        g1_action = self.g1_action_transform.unapply({"action": normalized_action})
         return g1_action
 
     def setup_environment(self, config: SimulationConfig) -> gym.vector.VectorEnv:
