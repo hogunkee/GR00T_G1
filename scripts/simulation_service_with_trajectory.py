@@ -16,6 +16,7 @@
 import argparse
 import os
 
+import json
 import pickle
 import numpy as np
 from pathlib import Path
@@ -28,6 +29,8 @@ from gr00t.eval.simulation_with_trajectory import (
     VideoConfig,
 )
 from gr00t.model.policy import Gr00tPolicy
+from gr00t.data.schema import DatasetMetadata
+from gr00t.data.embodiment_tags import EmbodimentTag
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -90,11 +93,15 @@ if __name__ == "__main__":
 
     elif args.client:
         # Create a simulation client
-        simulation_client = SimulationInferenceClient(host=args.host, port=args.port)
-
-        print("Available modality configs:")
-        modality_config = simulation_client.get_modality_config()
-        print(modality_config.keys())
+        metadata_path = os.path.join(args.model_path, "experiment_cfg", "metadata.json")
+        with open(metadata_path, "r") as f:
+            metadatas = json.load(f)
+        # Get metadata for the specific embodiment
+        g1_metadata_dict = metadatas.get(EmbodimentTag("g1").value)
+        g1_metadata = DatasetMetadata.model_validate(g1_metadata_dict)
+        gr1_metadata_dict = metadatas.get(EmbodimentTag("gr1").value)
+        gr1_metadata = DatasetMetadata.model_validate(gr1_metadata_dict)
+        simulation_client = SimulationInferenceClient(g1_metadata, gr1_metadata, host=args.host, port=args.port)
 
         # Create simulation configuration
         config = SimulationConfig(

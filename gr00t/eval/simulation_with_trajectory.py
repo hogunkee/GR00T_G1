@@ -82,13 +82,13 @@ class SimulationConfig:
     video: VideoConfig = field(default_factory=VideoConfig)
     multistep: MultiStepConfig = field(default_factory=MultiStepConfig)
     multi_video: bool = False
-    traj_path: str
+    traj_path: str = ''
 
 
 class SimulationInferenceClient(BaseInferenceClient, BasePolicy):
     """Client for running simulations and communicating with the inference server."""
 
-    def __init__(self, host: str = "localhost", port: int = 5555):
+    def __init__(self, g1_metadata, gr1_metadata, host: str = "localhost", port: int = 5555):
         """Initialize the simulation client with server connection details."""
         super().__init__(host=host, port=port)
         self.env = None
@@ -97,20 +97,30 @@ class SimulationInferenceClient(BaseInferenceClient, BasePolicy):
         g1_data_config = DATA_CONFIG_MAP["dex31_g1_arms_waist"]
         g1_modality_config = g1_data_config.modality_config()
         self.g1_modality_transform = g1_data_config.transform()
+        self.g1_modality_transform.set_metadata(g1_metadata)
 
         # GR1 modality transform
         gr1_data_config = DATA_CONFIG_MAP["fourier_gr1_arms_waist"]
         gr1_modality_config = gr1_data_config.modality_config()
         self.gr1_modality_transform = gr1_data_config.transform()
+        self.gr1_modality_transform.set_metadata(gr1_metadata)
 
+    def load_trajectory(self, traj_path):
         # load trajectory data
-        with open(self.traj_path, 'rb') as f:
+        with open(traj_path, 'rb') as f:
             self.trajectories = pickle.load(f)
             self.episodes = sorted(list(self.trajectories.keys()))
 
+    def get_action(self, observations: Dict[str, Any]) -> Dict[str, Any]:
+        return
+
+    def get_modality_config(self) -> Dict[str, ModalityConfig]:
+        return
+
     def transfer_action(self, gr1_action):
-        normalized_action = self.gr1_modality_transform.unapply({"action": gr1_action.cpu()})
-        g1_action = self.g1_modality_transform.apply({"action": normalized_action.cpu()})
+        normalized_action = self.gr1_modality_transform.apply(gr1_action)
+        #normalized_action = self.gr1_modality_transform.unapply({"action": gr1_action})
+        g1_action = self.g1_modality_transform.unapply({"action": normalized_action})
         return g1_action
 
     def setup_environment(self, config: SimulationConfig) -> gym.vector.VectorEnv:
@@ -129,6 +139,7 @@ class SimulationInferenceClient(BaseInferenceClient, BasePolicy):
 
     def run_simulation(self, config: SimulationConfig) -> Tuple[str, List[bool]]:
         """Run the simulation for the specified number of episodes."""
+        self.load_trajectory(config.traj_path)
         start_time = time.time()
         print(
             f"Running {config.n_episodes} episodes for {config.env_name} with {config.n_envs} environments"
@@ -194,6 +205,13 @@ class SimulationInferenceClient(BaseInferenceClient, BasePolicy):
         episode = self.episodes[ep_idx]
         trajectory = self.trajectories[episode]
         gr1_action = {k:a[timestep:timestep+1] for k,a in trajectory.items()}
+        if False:
+            print()
+            print("gr1 action:")
+            print(gr1_action)
+            for k in gr1_action.keys():
+                print(k, gr1_action[k].shape, type(gr1_action[k]))
+            exit()
         g1_action = self.transfer_action(gr1_action)
         return g1_action
 

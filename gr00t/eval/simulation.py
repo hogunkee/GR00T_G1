@@ -152,6 +152,12 @@ class SimulationInferenceClient(BaseInferenceClient, BasePolicy):
         while completed_episodes < config.n_episodes:
             # Process observations and get actions from the server
             actions = self._get_actions_from_server(obs)
+            print()
+            print("actions:")
+            print(actions)
+            for k in actions.keys():
+                print(k, actions[k].shape, type(actions[k]))
+            exit()
             # obs[key_obs] : (num_env, ...)
             # actions[key_joint] : (num_env, 16, dim_joint)
             if False:
