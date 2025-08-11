@@ -21,6 +21,7 @@ import numpy as np
 import pytorch3d.transforms as pt
 import torch
 from pydantic import Field, PrivateAttr, field_validator, model_validator
+from scipy.spatial.transform import Rotation
 
 from gr00t.data.schema import DatasetMetadata, RotationType, StateActionMetadata
 from gr00t.data.transform.base import InvertibleModalityTransform, ModalityTransform
@@ -32,7 +33,13 @@ from gr00t.data.transform.base import InvertibleModalityTransform, ModalityTrans
 # [index1, index0, middle1, middle0, thumb1, thumb0, 0]
 # left:  [-, -, -, -, +, +, +]
 # right: [+, +, +, +, -, -, -]
-class StateActionRetarget(InvertibleModalityTransform):
+# Gr1 arms
+# [shoulder 0~2, elbow 3, wrist 4~6]
+# wrist: roll, yaw, pitch
+# G1 arms
+# [shoulder 0~2, elbow 3, wrist 4~6]
+# wrist: -roll, pitch, yaw
+class PreStateActionRetarget(InvertibleModalityTransform):
     # Apply: From G1 to GR1
     def apply(self, data: dict[str, Any]) -> dict[str, Any]:
         #print("apply to:", self.apply_to)
@@ -78,11 +85,21 @@ class StateActionRetarget(InvertibleModalityTransform):
                 data[key] = np.concatenate(new_value, -1)
             if 'left_arm' in key:
                 value = data[key]
-                value[:,:,4] = value[:,:,4] - np.pi/2
+                value[:,:,3] = value[:,:,3] - np.pi/2
+                B, K, _ = value.shape
+                angles = value[:,:,4:].copy().reshape(B*K, 3)
+                new_angles = Rotation.from_euler('xyz', angles).as_euler('xzy')
+                value[:,:,4:] = new_angles.reshape(B, K, 3)
+                value[:,:,4] = -value[:,:,4]
                 data[key] = value
             if 'right_arm' in key:
                 value = data[key]
-                value[:,:,4] = value[:,:,4] - np.pi/2
+                value[:,:,3] = value[:,:,3] - np.pi/2
+                B, K, _ = value.shape
+                angles = value[:,:,4:].copy().reshape(B*K, 3)
+                new_angles = Rotation.from_euler('xyz', angles).as_euler('xzy')
+                value[:,:,4:] = new_angles.reshape(B, K, 3)
+                value[:,:,4] = -value[:,:,4]
                 data[key] = value
         return data
 
@@ -125,6 +142,77 @@ class StateActionRetarget(InvertibleModalityTransform):
                 new_theta = - theta - np.pi/2
                 new_value = [new_index1, new_index0, new_middle1, new_middle0, new_thumb1, new_thumb0, new_theta]
                 data[key] = np.concatenate(new_value, -1)
+            if 'left_arm' in key:
+                value = data[key]
+                value[:,:,3] = value[:,:,3] + np.pi/2
+                B, K, _ = value.shape
+                value[:,:,4] = -value[:,:,4]
+                angles = value[:,:,4:].copy().reshape(B*K, 3)
+                new_angles = Rotation.from_euler('xzy', angles).as_euler('xyz')
+                value[:,:,4:] = new_angles.reshape(B, K, 3)
+                data[key] = value
+            if 'right_arm' in key:
+                value = data[key]
+                value[:,:,3] = value[:,:,3] + np.pi/2
+                B, K, _ = value.shape
+                value[:,:,4] = -value[:,:,4]
+                angles = value[:,:,4:].copy().reshape(B*K, 3)
+                new_angles = Rotation.from_euler('xzy', angles).as_euler('xyz')
+                value[:,:,4:] = new_angles.reshape(B, K, 3)
+                data[key] = value
+        return data
+
+class PostStateActionRetarget(InvertibleModalityTransform):
+    # Apply: From G1 to GR1
+    def apply(self, data: dict[str, Any]) -> dict[str, Any]:
+        #print("apply to:", self.apply_to)
+        #print("data:", data)
+        for key in self.apply_to:
+            if key not in data:
+                continue
+            if 'left_arm' in key:
+                value = data[key]
+                value[:,:,3] = value[:,:,3] - np.pi/2
+                B, K, _ = value.shape
+                angles = value[:,:,4:].copy().reshape(B*K, 3)
+                new_angles = Rotation.from_euler('xyz', angles).as_euler('xzy')
+                value[:,:,4:] = new_angles.reshape(B, K, 3)
+                value[:,:,4] = -value[:,:,4]
+                data[key] = value
+            if 'right_arm' in key:
+                value = data[key]
+                value[:,:,3] = value[:,:,3] - np.pi/2
+                B, K, _ = value.shape
+                angles = value[:,:,4:].copy().reshape(B*K, 3)
+                new_angles = Rotation.from_euler('xyz', angles).as_euler('xzy')
+                value[:,:,4:] = new_angles.reshape(B, K, 3)
+                value[:,:,4] = -value[:,:,4]
+                data[key] = value
+        return data
+
+    # Unapply: From GR1 to G1
+    def unapply(self, data: dict[str, Any]) -> dict[str, Any]:
+        for key in self.apply_to:
+            if key not in data:
+                continue
+            if 'left_arm' in key:
+                value = data[key]
+                value[:,:,3] = value[:,:,3] + np.pi/2
+                B, K, _ = value.shape
+                value[:,:,4] = -value[:,:,4]
+                angles = value[:,:,4:].copy().reshape(B*K, 3)
+                new_angles = Rotation.from_euler('xzy', angles).as_euler('xyz')
+                value[:,:,4:] = new_angles.reshape(B, K, 3)
+                data[key] = value
+            if 'right_arm' in key:
+                value = data[key]
+                value[:,:,3] = value[:,:,3] + np.pi/2
+                B, K, _ = value.shape
+                value[:,:,4] = -value[:,:,4]
+                angles = value[:,:,4:].copy().reshape(B*K, 3)
+                new_angles = Rotation.from_euler('xzy', angles).as_euler('xyz')
+                value[:,:,4:] = new_angles.reshape(B, K, 3)
+                data[key] = value
         return data
 
 

@@ -22,7 +22,8 @@ from gr00t.data.transform.state_action import (
     StateActionSinCosTransform,
     StateActionToTensor,
     StateActionTransform,
-    StateActionRetarget,
+    PreStateActionRetarget,
+    PostStateActionRetarget,
 )
 from gr00t.data.transform.video import (
     VideoColorJitter,
@@ -301,7 +302,7 @@ class Dex31G1ArmsOnlyDataConfig(BaseDataConfig):
             ),
             VideoToNumpy(apply_to=self.video_keys),
             # state transforms
-            StateActionRetarget(apply_to=self.state_keys),
+            PreStateActionRetarget(apply_to=self.state_keys),
             StateActionToTensor(apply_to=self.state_keys),
             StateActionSinCosTransform(apply_to=self.state_keys),
             #StateActionTransform(
@@ -309,12 +310,13 @@ class Dex31G1ArmsOnlyDataConfig(BaseDataConfig):
             #    normalization_modes={key: "min_max" for key in self.state_keys},
             #),
             # action transforms
-            StateActionRetarget(apply_to=self.action_keys),
+            PreStateActionRetarget(apply_to=self.action_keys),
             StateActionToTensor(apply_to=self.action_keys),
             StateActionTransform(
                 apply_to=self.action_keys,
                 normalization_modes={key: "min_max" for key in self.action_keys},
             ),
+            # PostStateActionRetarget(apply_to=self.action_keys),
             # concat transforms
             ConcatTransform(
                 video_concat_order=self.video_keys,
@@ -334,12 +336,13 @@ class Dex31G1ArmsOnlyDataConfig(BaseDataConfig):
     def action_transform(self) -> ModalityTransform:
         transforms = [
             # action transforms
-            StateActionRetarget(apply_to=self.action_keys),
+            PreStateActionRetarget(apply_to=self.action_keys),
             StateActionToTensor(apply_to=self.action_keys),
             StateActionTransform(
                 apply_to=self.action_keys,
                 normalization_modes={key: "min_max" for key in self.action_keys},
             ),
+            # PostStateActionRetarget(apply_to=self.action_keys),
             # concat transforms
             #ConcatTransform( action_concat_order=self.action_keys,),
             # model-specific transform
@@ -374,7 +377,7 @@ class Dex31G1ArmsWaistDataConfig(Dex31G1ArmsOnlyDataConfig):
         return super().transform()
 
     def action_transform(self):
-        return super().transform()
+        return super().action_transform()
 
 
 class Dex31G1FullBodyDataConfig(BaseDataConfig):

@@ -96,8 +96,8 @@ class SimulationInferenceClient(BaseInferenceClient, BasePolicy):
 
         # G1 modality tansform
         self.g1_data_config = DATA_CONFIG_MAP["dex31_g1_arms_waist"]
-        self.g1_action_transform = self.g1_data_config.action_transform()
-        self.g1_action_transform.set_metadata(g1_metadata)
+        self.g1_transform = self.g1_data_config.transform()
+        self.g1_transform.set_metadata(g1_metadata)
 
         # GR1 modality transform
         self.gr1_data_config = DATA_CONFIG_MAP["fourier_gr1_arms_waist"]
@@ -120,7 +120,7 @@ class SimulationInferenceClient(BaseInferenceClient, BasePolicy):
         data = self.gr1_action_transform.apply(gr1_action)
         normalized_action = torch.cat([data.pop(key) for key in self.gr1_data_config.action_keys], dim=-1)
         #normalized_action = self.gr1_action_transform.unapply({"action": gr1_action})
-        g1_action = self.g1_action_transform.unapply({"action": normalized_action})
+        g1_action = self.g1_transform.unapply({"action": normalized_action})
         return g1_action
 
     def setup_environment(self, config: SimulationConfig) -> gym.vector.VectorEnv:
