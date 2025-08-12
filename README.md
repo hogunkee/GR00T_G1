@@ -8,6 +8,10 @@
 **GR00T-G1** is an adaptation of NVIDIA's [Isaac GR00T](https://github.com/NVIDIA/Isaac-GR00T) project for the **Unitree G1 humanoid robot**.
 This repository modifies the original GR00T framework to integrate G1's kinematics, dynamics, and control interface for simulation and potential real-world deployment.
 
+### Sim Env: [robocasa-g1-tabletop-tasks](https://github.com/hogunkee/robocasa_g1)
+
+For Simulation Evaluation, please refer to [robocasa-g1-tabletop-tasks](https://github.com/hogunkee/robocasa_g1)
+
 ---
 
 ## Overview
