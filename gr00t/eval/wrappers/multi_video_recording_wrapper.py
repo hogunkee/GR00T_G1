@@ -224,7 +224,8 @@ class MultiVideoRecordingWrapper(gym.Wrapper):
 
         self.is_success = False
         if self.video_dir is not None:
-            self.file_paths = [self.video_dir / f"{uuid.uuid4()}_{cam}.mp4" for cam in self.cameras]
+            uid = uuid.uuid4()
+            self.file_paths = [self.video_dir / f"{uid}_{cam}.mp4" for cam in self.cameras]
         return result
 
     def step(self, action):

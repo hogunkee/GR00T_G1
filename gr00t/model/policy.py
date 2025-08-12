@@ -144,52 +144,6 @@ class Gr00tPolicy(BasePolicy):
         """
         return self._modality_transform.unapply(action)
 
-
-    # GR1 hands
-    # [pinky, ring, middle, index, thumb, pi/2]
-    # G1 hands
-    # [index1, index0, middle1, middle0, thumb1, thumb0, 0]
-    # left:  [-, -, -, -, +, +, 0]
-    # right: [+, +, +, +, -, -, 0]
-    def map_actions(self, gr1_action):
-        # gr1_action: (16, 32) 6-dims per each hand
-        # g1_action: (16, 34) 7-dims per each hand
-        body_act = gr1_action[:, :20]
-        gr1_left_act = gr1_action[:, 20:26]
-        gr1_right_act = gr1_action[:, 26:32]
-
-        left_index_action = (gr1_left_act[:,2] + gr1_left_act[:,3])/2
-        left_middle_action = (gr1_left_act[:,0] + gr1_left_act[:,1])/2
-        g1_left_act = np.concatenate([np.zeros([16, 1]), gr1_left_act[:,4], gr1_left_act[:,4], left_index_action, left_index_action, left_middle_action, left_middle_action], -1)
-        right_index_action = (gr1_right_act[:,2] + gr1_right_act[:,3])/2
-        right_middle_action = (gr1_right_act[:,0] + gr1_right_act[:,1])/2
-        g1_right_act = np.concatenate([np.zeros([16, 1]), gr1_right_act[:,4], gr1_right_act[:,4], right_index_action, right_index_action, right_middle_action, right_middle_action], -1)
-        g1_action = np.concatenate([body_act, g1_left_act, g1_right_act], -1)
-        return g1_action
-
-    def map_actions2(self, gr1_action):
-        # gr1 actions: 6-dims for each arm
-        # [pinky, ring, middle, index, thumb, 1.5]
-        # g1 actions: 7-dims for each arm
-        # [0, thumb0, thumb1, index0, index1, middle0, middle1]
-        gr1_left_act = gr1_action['action.left_hand']
-        gr1_right_act = gr1_action['action.right_hand']
-
-        # heurstic action mapping
-        # G1 index = average of GR1 index & middle fingers
-        # G1 middle = average of GR1 ring & pinky fingers
-        left_index_action = (gr1_left_act[2] + gr1_left_act[3])/2
-        left_middle_action = (gr1_left_act[0] + gr1_left_act[1])/2
-        g1_left_act = [0, gr1_left_act[4], gr1_left_act[4], left_index_action, left_index_action, left_middle_action, left_middle_action]
-        right_index_action = (gr1_right_act[2] + gr1_right_act[3])/2
-        right_middle_action = (gr1_right_act[0] + gr1_right_act[1])/2
-        g1_right_act = [0, gr1_right_act[4], gr1_right_act[4], right_index_action, right_index_action, right_middle_action, right_middle_action]
-        g1_action = {
-                    'action.left_hand': g1_left_act,
-                    'action.right_hand': g1_right_act
-                    }
-        return g1_action
-
     def get_action(self, observations: Dict[str, Any]) -> Dict[str, Any]:
         """
         Make a prediction with the model.
