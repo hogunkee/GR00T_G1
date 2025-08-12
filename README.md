@@ -1,9 +1,9 @@
-# GR00T-G1
-
 <div align="center">
 <img src="media/g1_gr00t_transfer_frontview.gif" width="45%">
 <img src="media/g1_gr00t_transfer_egoview.gif" width="45%">
 </div>
+
+# GR00T-G1
 
 **GR00T-G1** is an adaptation of NVIDIA's [Isaac GR00T](https://github.com/NVIDIA-ISAAC/GR00T) project for the **Unitree G1 humanoid robot**.
 This repository modifies the original GR00T framework to integrate G1's kinematics, dynamics, and control interface for simulation and potential real-world deployment.
