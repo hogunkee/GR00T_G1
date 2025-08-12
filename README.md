@@ -19,7 +19,7 @@ For Simulation Evaluation, please refer to [robocasa-g1-tabletop-tasks](https://
 GR00T-G1 enables:
 - Simulation of Unitree G1 in Robocasa and Robosuite with GR00T’s learning & control framework
 - Compatibility with G1’s URDF and mesh models
-- Motion retargetting to control G1 with the GR00T-N1.5.
+- Motion retargetting to control G1 with GR00T-N1.5.
 
 ---
 
