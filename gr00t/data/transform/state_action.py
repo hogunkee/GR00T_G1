@@ -41,48 +41,22 @@ class StateActionRetarget(InvertibleModalityTransform):
             if key not in data:
                 continue
             if 'left_hand' in key:
+                # 손 관절은 기본값(0)으로 고정
                 value = data[key]
-                index1 = -value[:,:,0:1]
-                index0 = -value[:,:,1:2]
-                middle1 = -value[:,:,2:3]
-                middle0 = -value[:,:,3:4]
-                thumb1 = value[:,:,4:5]
-                thumb0 = value[:,:,5:6]
-                theta = value[:,:,6:7]
-                #index1, index0, middle1, middle0, thumb1, thumb0, theta = value
-                new_index = (index0 + index1) / 2
-                new_middle = new_index
-                new_ring = (middle0 + middle1) / 2
-                new_pinky = new_ring
-                new_thumb = (thumb0 + thumb1) / 2
-                new_theta = theta + np.pi/2
-                new_value = [new_pinky, new_ring, new_middle, new_index, new_thumb, new_theta]
-                data[key] = np.concatenate(new_value, -1)
+                data[key] = np.zeros_like(value)
             if 'right_hand' in key:
+                # 손 관절은 기본값(0)으로 고정
                 value = data[key]
-                index1 = value[:,:,0:1]
-                index0 = value[:,:,1:2]
-                middle1 = value[:,:,2:3]
-                middle0 = value[:,:,3:4]
-                thumb1 = -value[:,:,4:5]
-                thumb0 = -value[:,:,5:6]
-                theta = -value[:,:,6:7]
-                #index1, index0, middle1, middle0, thumb1, thumb0, theta = value
-                new_index = (index0 + index1) / 2
-                new_middle = new_index
-                new_ring = (middle0 + middle1) / 2
-                new_pinky = new_ring
-                new_thumb = (thumb0 + thumb1) / 2
-                new_theta = theta + np.pi/2
-                new_value = [new_pinky, new_ring, new_middle, new_index, new_thumb, new_theta]
-                data[key] = np.concatenate(new_value, -1)
+                data[key] = np.zeros_like(value)
             if 'left_arm' in key:
+                # wrist_roll π/2 보정 제거 - 팔 관절은 그대로 전달
                 value = data[key]
-                value[:,:,4] = value[:,:,4] - np.pi/2
+                # value[:,:,4] = value[:,:,4] - np.pi/2  # 보정 제거
                 data[key] = value
             if 'right_arm' in key:
+                # wrist_roll π/2 보정 제거 - 팔 관절은 그대로 전달
                 value = data[key]
-                value[:,:,4] = value[:,:,4] - np.pi/2
+                # value[:,:,4] = value[:,:,4] - np.pi/2  # 보정 제거
                 data[key] = value
         return data
 
@@ -92,39 +66,13 @@ class StateActionRetarget(InvertibleModalityTransform):
             if key not in data:
                 continue
             if 'left_hand' in key:
+                # 손 관절은 기본값(0)으로 고정
                 value = data[key]
-                pinky = value[:,:,0:1]
-                ring = value[:,:,1:2]
-                middle = value[:,:,2:3]
-                index = value[:,:,3:4]
-                thumb = value[:,:,4:5]
-                theta = value[:,:,5:6]
-                new_index0 = - (index + middle) / 2
-                new_index1 = - (index + middle) / 2
-                new_middle0 = - (ring + pinky) / 2
-                new_middle1 = - (ring + pinky) / 2
-                new_thumb0 = thumb
-                new_thumb1 = thumb
-                new_theta = theta - np.pi/2
-                new_value = [new_index1, new_index0, new_middle1, new_middle0, new_thumb1, new_thumb0, new_theta]
-                data[key] = np.concatenate(new_value, -1)
+                data[key] = np.zeros_like(value)
             if 'right_hand' in key:
+                # 손 관절은 기본값(0)으로 고정
                 value = data[key]
-                pinky = value[:,:,0:1]
-                ring = value[:,:,1:2]
-                middle = value[:,:,2:3]
-                index = value[:,:,3:4]
-                thumb = value[:,:,4:5]
-                theta = value[:,:,5:6]
-                new_index0 = (index + middle) / 2
-                new_index1 = (index + middle) / 2
-                new_middle0 = (ring + pinky) / 2
-                new_middle1 = (ring + pinky) / 2
-                new_thumb0 = - thumb
-                new_thumb1 = - thumb
-                new_theta = - theta - np.pi/2
-                new_value = [new_index1, new_index0, new_middle1, new_middle0, new_thumb1, new_thumb0, new_theta]
-                data[key] = np.concatenate(new_value, -1)
+                data[key] = np.zeros_like(value)
         return data
 
 

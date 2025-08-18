@@ -78,6 +78,13 @@ if __name__ == "__main__":
     parser.add_argument("--multi_video", action="store_true", help="Save the multi camera images.")
     # load trajectory data
     parser.add_argument("--traj_path", type=str, default="data/trajectories/action_000.pkl")
+    # direct passthrough options (use GR1 arms from traj directly; fix hands/waist)
+    parser.add_argument("--direct_passthrough", action="store_true", help="Bypass transforms and feed GR1 arm actions directly to G1 env; fix hands and waist.")
+    parser.add_argument("--fixed_hand", type=float, default=0.0, help="Fixed value for both hands when using direct passthrough mode.")
+    parser.add_argument("--fixed_wrist", type=float, default=0.0, help="(UNUSED) Previously used to fix wrist joints, now wrist values are passed through from GR1 trajectory.")
+    parser.add_argument("--fixed_waist", type=float, default=0.0, help="Fixed value for waist when using direct passthrough mode.")
+    # debug
+    parser.add_argument("--debug", action="store_true", help="Enable debug prints.")
     args = parser.parse_args()
 
     if args.server:
@@ -93,15 +100,33 @@ if __name__ == "__main__":
 
     elif args.client:
         # Create a simulation client
-        metadata_path = os.path.join(args.model_path, "experiment_cfg", "metadata.json")
-        with open(metadata_path, "r") as f:
-            metadatas = json.load(f)
-        # Get metadata for the specific embodiment
-        g1_metadata_dict = metadatas.get(EmbodimentTag("g1").value)
-        g1_metadata = DatasetMetadata.model_validate(g1_metadata_dict)
-        gr1_metadata_dict = metadatas.get(EmbodimentTag("gr1").value)
-        gr1_metadata = DatasetMetadata.model_validate(gr1_metadata_dict)
-        simulation_client = SimulationInferenceClient(g1_metadata, gr1_metadata, host=args.host, port=args.port)
+        g1_metadata = None
+        gr1_metadata = None
+        if not args.direct_passthrough:
+            metadata_path = os.path.join(args.model_path, "experiment_cfg", "metadata.json")
+            with open(metadata_path, "r") as f:
+                metadatas = json.load(f)
+            # Get metadata for the specific embodiment
+            g1_metadata_dict = metadatas.get(EmbodimentTag("g1").value)
+            gr1_metadata_dict = metadatas.get(EmbodimentTag("gr1").value)
+            if g1_metadata_dict is None or gr1_metadata_dict is None:
+                raise ValueError("Missing g1 or gr1 metadata in metadata.json; either provide a model_path with both, or use --direct_passthrough.")
+            g1_metadata = DatasetMetadata.model_validate(g1_metadata_dict)
+            gr1_metadata = DatasetMetadata.model_validate(gr1_metadata_dict)
+        # If direct passthrough is enabled, allow missing metadata by passing None
+        g1_md = None if args.direct_passthrough else g1_metadata
+        gr1_md = None if args.direct_passthrough else gr1_metadata
+        simulation_client = SimulationInferenceClient(
+            g1_md,
+            gr1_md,
+            host=args.host,
+            port=args.port,
+            direct_passthrough=args.direct_passthrough,
+            fixed_hand=args.fixed_hand,
+            fixed_wrist=args.fixed_wrist,
+            fixed_waist=args.fixed_waist,
+            debug=False,
+        )
 
         # Create simulation configuration
         config = SimulationConfig(

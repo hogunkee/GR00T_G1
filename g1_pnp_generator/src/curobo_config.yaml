@@ -1,0 +1,7 @@
+# curobo_config.yaml
+# G1 로봇의 왼팔 제어를 위한 Curobo 설정 파일
+
+kinematics:
+  urdf_path: "/home/night1115/grad_proj/gr00t_g1/g1_pnp_generator/assets/robots/g1_29dof_with_3finger.urdf"
+  base_link: "pelvis"
+  ee_link: "left_hand_palm_link"  # left_hand_palm_link 대신 wrist 사용

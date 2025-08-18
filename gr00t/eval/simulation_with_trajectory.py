@@ -89,20 +89,43 @@ class SimulationConfig:
 class SimulationInferenceClient(BaseInferenceClient, BasePolicy):
     """Client for running simulations and communicating with the inference server."""
 
-    def __init__(self, g1_metadata, gr1_metadata, host: str = "localhost", port: int = 5555):
-        """Initialize the simulation client with server connection details."""
+    def __init__(
+        self,
+        g1_metadata: Optional[dict] = None,
+        gr1_metadata: Optional[dict] = None,
+        host: str = "localhost",
+        port: int = 5555,
+        direct_passthrough: bool = False,
+        fixed_hand: float = 0.0,
+        fixed_wrist: float = 0.0,
+        fixed_waist: float = 0.0,
+        debug: bool = False,
+    ):
+        """Initialize the simulation client with server connection details.
+
+        If direct_passthrough is True (or metadata is missing), actions from the trajectory
+        will be passed directly to the environment for arms, while hands and waist are
+        set to fixed constants. This bypasses metadata-based transforms.
+        """
         super().__init__(host=host, port=port)
         self.env = None
 
-        # G1 modality tansform
-        self.g1_data_config = DATA_CONFIG_MAP["dex31_g1_arms_waist"]
-        self.g1_action_transform = self.g1_data_config.action_transform()
-        self.g1_action_transform.set_metadata(g1_metadata)
+        self.direct_passthrough = bool(direct_passthrough or (g1_metadata is None) or (gr1_metadata is None))
+        self.fixed_hand = float(fixed_hand)
+        self.fixed_waist = float(fixed_waist)
+        self.fixed_wrist = float(fixed_wrist)
+        self.debug = bool(debug)
 
-        # GR1 modality transform
-        self.gr1_data_config = DATA_CONFIG_MAP["fourier_gr1_arms_waist"]
-        self.gr1_action_transform = self.gr1_data_config.action_transform()
-        self.gr1_action_transform.set_metadata(gr1_metadata)
+        if not self.direct_passthrough:
+            # G1 modality transform
+            self.g1_data_config = DATA_CONFIG_MAP["dex31_g1_arms_waist"]
+            self.g1_action_transform = self.g1_data_config.action_transform()
+            self.g1_action_transform.set_metadata(g1_metadata)
+
+            # GR1 modality transform
+            self.gr1_data_config = DATA_CONFIG_MAP["fourier_gr1_arms_waist"]
+            self.gr1_action_transform = self.gr1_data_config.action_transform()
+            self.gr1_action_transform.set_metadata(gr1_metadata)
 
     def load_trajectory(self, traj_path):
         # load trajectory data
@@ -117,11 +140,92 @@ class SimulationInferenceClient(BaseInferenceClient, BasePolicy):
         return
 
     def transfer_action(self, gr1_action):
-        data = self.gr1_action_transform.apply(gr1_action)
-        normalized_action = torch.cat([data.pop(key) for key in self.gr1_data_config.action_keys], dim=-1)
-        #normalized_action = self.gr1_action_transform.unapply({"action": gr1_action})
-        g1_action = self.g1_action_transform.unapply({"action": normalized_action})
-        return g1_action
+        if self.direct_passthrough:
+            # Directly map arms from GR1 trajectory to G1 env, fix hands and waist
+            # gr1_action values are shaped (num_env=1, n_action_steps, dim)
+            left_arm = gr1_action.get("action.left_arm")
+            right_arm = gr1_action.get("action.right_arm")
+
+            if left_arm is None or right_arm is None:
+                raise ValueError("Trajectory must contain 'action.left_arm' and 'action.right_arm' for direct passthrough mode")
+
+            # --- 동적으로 env가 기대하는 DoF 읽기 ---
+            space = getattr(self.env, "single_action_space", None)
+            if space is None:
+                raise RuntimeError("VectorEnv not initialized or single_action_space unavailable.")
+
+            expected = {
+                "action.left_arm": space["action.left_arm"].shape[-1],
+                "action.right_arm": space["action.right_arm"].shape[-1],
+                "action.left_hand": space["action.left_hand"].shape[-1],
+                "action.right_hand": space["action.right_hand"].shape[-1],
+                "action.waist": space["action.waist"].shape[-1],
+            }
+
+            # trajectory에서 스텝 수
+            n_action_steps = left_arm.shape[1]
+
+            # 타입/복사 정책
+            left_arm = left_arm.astype(np.float32, copy=False)
+            right_arm = right_arm.astype(np.float32, copy=False)
+
+            # --- 팔 차원 검증 ---
+            if left_arm.shape[-1] != expected["action.left_arm"]:
+                raise ValueError(f"left_arm dim mismatch: traj={left_arm.shape[-1]} vs env={expected['action.left_arm']}")
+            if right_arm.shape[-1] != expected["action.right_arm"]:
+                raise ValueError(f"right_arm dim mismatch: traj={right_arm.shape[-1]} vs env={expected['action.right_arm']}")
+
+            # --- GR1→G1 관절 순서 및 범위 보정 ---
+            # GR1 순서: [shoulder_pitch, shoulder_roll, shoulder_yaw, elbow_pitch, wrist_yaw, wrist_roll, wrist_pitch]
+            # G1 순서:  [shoulder_pitch, shoulder_roll, shoulder_yaw, elbow_pitch, wrist_roll, wrist_pitch, wrist_yaw]
+            
+            # 1. 손목 관절 순서 재배치 (wrist_yaw와 wrist_roll 위치 바뀜)
+            left_arm_reordered = left_arm.copy()
+            right_arm_reordered = right_arm.copy()
+            
+            # GR1[4]=wrist_yaw → G1[6]=wrist_yaw
+            # GR1[5]=wrist_roll → G1[4]=wrist_roll  
+            # GR1[6]=wrist_pitch → G1[5]=wrist_pitch
+            left_arm_reordered[..., 4] = left_arm[..., 5]  # wrist_roll
+            left_arm_reordered[..., 5] = left_arm[..., 6]  # wrist_pitch
+            left_arm_reordered[..., 6] = left_arm[..., 4]  # wrist_yaw
+            
+            right_arm_reordered[..., 4] = right_arm[..., 5]  # wrist_roll
+            right_arm_reordered[..., 5] = right_arm[..., 6]  # wrist_pitch
+            right_arm_reordered[..., 6] = right_arm[..., 4]  # wrist_yaw
+            
+            
+            left_arm = left_arm_reordered
+            right_arm = right_arm_reordered
+            left_arm[..., 3] = left_arm[..., 3] + np.pi/2
+            right_arm[..., 3] = right_arm[..., 3] + np.pi/2
+
+            # --- 손/허리 배열을 env 기대 DoF로 생성 ---
+            left_hand = np.full((1, n_action_steps, expected["action.left_hand"]), self.fixed_hand, dtype=np.float32)
+            right_hand = np.full((1, n_action_steps, expected["action.right_hand"]), self.fixed_hand, dtype=np.float32)
+            waist = np.full((1, n_action_steps, expected["action.waist"]), self.fixed_waist, dtype=np.float32)
+
+            g1_action = {
+                "action.left_arm": left_arm,
+                "action.right_arm": right_arm,
+                "action.left_hand": left_hand,
+                "action.right_hand": right_hand,
+                "action.waist": waist,
+            }
+
+            # --- 최종 검증(안전망) ---
+            for k, v in g1_action.items():
+                exp = expected[k]
+                if v.shape[1] != n_action_steps or v.shape[-1] != exp:
+                    raise ValueError(f"{k} shape mismatch: got {v.shape}, expected (1, {n_action_steps}, {exp})")
+
+            return g1_action
+        else:
+            data = self.gr1_action_transform.apply(gr1_action)
+            normalized_action = torch.cat([data.pop(key) for key in self.gr1_data_config.action_keys], dim=-1)
+            # normalized_action = self.gr1_action_transform.unapply({"action": gr1_action})
+            g1_action = self.g1_action_transform.unapply({"action": normalized_action})
+            return g1_action
 
     def setup_environment(self, config: SimulationConfig) -> gym.vector.VectorEnv:
         """Set up the simulation environment based on the provided configuration."""
@@ -162,11 +266,35 @@ class SimulationInferenceClient(BaseInferenceClient, BasePolicy):
         while ep_idx < config.n_episodes:
             # Process observations and get actions from the server
             actions = self._get_actions_from_trajectory(ep_idx, timestep)
-            # obs[key_obs] : (num_env, ...)
-            # actions[key_joint] : (num_env, 16, dim_joint)
+            
+            # Check if we've reached the end of trajectory data
+            if actions is None:
+                print(f"[INFO] Reached end of trajectory data at timestep {timestep}, ending episode {ep_idx}")
+                # Force episode termination
+                terminations = [True] * config.n_envs
+                truncations = [False] * config.n_envs
+                next_obs = obs
+                rewards = [0.0] * config.n_envs
+                env_infos = {"success": [[False]] * config.n_envs}
+            else:
+                # obs[key_obs] : (num_env, ...)
+                # actions[key_joint] : (num_env, 16, dim_joint)
 
-            # Step the environment
-            next_obs, rewards, terminations, truncations, env_infos = self.env.step(actions)
+                # Step the environment
+                if self.debug:
+                    print(f"[DEBUG] Stepping environment with actions:")
+                    for k, v in actions.items():
+                        print(f"  {k}: shape={v.shape}, dtype={v.dtype}")
+                try:
+                    next_obs, rewards, terminations, truncations, env_infos = self.env.step(actions)
+                    if self.debug:
+                        print(f"[DEBUG] Environment step successful")
+                except Exception as e:
+                    print(f"[ERROR] Environment step failed: {e}")
+                    print(f"[DEBUG] Action details:")
+                    for k, v in actions.items():
+                        print(f"  {k}: shape={v.shape}, dtype={v.dtype}, min={v.min()}, max={v.max()}")
+                    raise
 
             # Update episode tracking
             current_successes[0] |= bool(env_infos["success"][0][0])
@@ -204,6 +332,13 @@ class SimulationInferenceClient(BaseInferenceClient, BasePolicy):
     def _get_actions_from_trajectory(self, ep_idx, timestep) -> Dict[str, Any]:
         episode = self.episodes[ep_idx]
         trajectory = self.trajectories[episode]
+        
+        # Check if we've reached the end of trajectory data
+        max_timesteps = min(len(v) for v in trajectory.values())
+        if timestep >= max_timesteps:
+            # Return None to signal episode should end
+            return None
+            
         gr1_action = {k:a[timestep:timestep+1] for k,a in trajectory.items()}
         if False:
             print()
@@ -213,6 +348,14 @@ class SimulationInferenceClient(BaseInferenceClient, BasePolicy):
                 print(k, gr1_action[k].shape, type(gr1_action[k]))
             exit()
         g1_action = self.transfer_action(gr1_action)
+        if self.debug:
+            # Print shapes as seen by vector env (batch dim should be 1); multistep wrapper expects (n_action_steps, dim)
+            print("[DEBUG] action shapes before env.step:")
+            for k,v in g1_action.items():
+                try:
+                    print(k, v.shape)
+                except Exception:
+                    print(k, type(v))
         return g1_action
 
 
