@@ -4,5 +4,5 @@
 kinematics:
   urdf_path: "/home/night1115/grad_proj/gr00t_g1/g1_pnp_generator/assets/robots/g1_29dof_with_3finger.urdf"
   base_link: "pelvis"
-  ee_link: "left_hand_palm_link"  # left_hand_palm_link 대신 wrist 사용
+  ee_link: "left_wrist_yaw_link"
   

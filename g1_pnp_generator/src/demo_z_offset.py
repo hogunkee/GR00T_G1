@@ -549,7 +549,7 @@ class G1SimulationWithCurobo:
             pelvis_rotation = Rotation.from_quat([pelvis_quat_world[1], pelvis_quat_world[2], pelvis_quat_world[3], pelvis_quat_world[0]])
             
             # 컵 위치에서 약간 떨어진 위치로 목표 설정 (접근 위치)
-            approach_offset = np.array([-0.06, -0.12, 0.0])  # 컵에서 10cm 뒤, 5cm 옆
+            approach_offset = np.array([-0.06, -0.12, 0.0])
             cup_approach_pos_world = cup_pos_world + approach_offset
             
             cup_approach_relative = cup_approach_pos_world - pelvis_pos_world
@@ -603,22 +603,13 @@ class G1SimulationWithCurobo:
             current_eef_pos = base_env.sim.data.body_xpos[palm_body_id].copy()
             self.set_cup_position(base_env, current_eef_pos)
             
-            # 5. Phase 3: Move to target position (B)
-            print(f"\n🎯 === Phase 4: Move to Target Position (B) ===")
+            # 5. Phase 3: Move to target position (B) - 3단계 부드러운 모션
+            print(f"\n🎯 === Phase 4: Move to Target Position (B) - 3-Step Motion ===")
             
             print(f"✓ Target table coordinates: {target_table_pos}")
             target_world_pos = self.table_to_world(target_table_pos, height_offset=0.0)
             print(f"✓ Target world position: {target_world_pos}")
             print(f"✓ Robot base position: {pelvis_pos_world}")
-            target_relative = target_world_pos - pelvis_pos_world
-            print(f"✓ Target relative to robot: {target_relative}")
-            target_pelvis_frame = pelvis_rotation.as_matrix().T @ target_relative
-            print(f"✓ Target in pelvis frame: {target_pelvis_frame}")
-            
-            target_pose_b = Pose(
-                position=torch.tensor(target_pelvis_frame, dtype=torch.float32).unsqueeze(0).cuda(),
-                quaternion=target_quaternion
-            )
             
             # 현재 상태에서 B 위치로 경로 계획 (grip 후 새로운 joint configuration 사용)
             print("✓ Getting current joint state after gripping...")
@@ -627,34 +618,46 @@ class G1SimulationWithCurobo:
             start_state_b = JointState.from_position(current_joints_b, joint_names=planning_joint_names)
             print(f"✓ Current joint positions (post-grip): {current_state_b['joint_positions']}")
             
-            result_b = self.curobo_planner.plan_single(start_state_b, target_pose_b)
+            # Step 1: Lift - 현재 위치에서 30cm 위로
+            print(f"\n📈 === Step 1: Lift (30cm up) ===")
+            current_eef_pos = base_env.sim.data.body_xpos[palm_body_id].copy()
+            lift_height = 0.30  # 30cm 위로
+            lift_pos = current_eef_pos.copy()
+            lift_pos[2] += lift_height
+            print(f"✓ Current EEF position: {current_eef_pos}")
+            print(f"✓ Lift target position: {lift_pos}")
             
-            if not result_b.success.item():
-                print("✗ CUROBO failed to plan path to target. Skipping to release phase...")
-                # 🔧 수정: grip 상태를 유지하고 release phase로 바로 이동
+            lift_relative = lift_pos - pelvis_pos_world
+            lift_pelvis_frame = pelvis_rotation.as_matrix().T @ lift_relative
+            print(f"✓ Lift target in pelvis frame: {lift_pelvis_frame}")
+            
+            target_pose_lift = Pose(
+                position=torch.tensor(lift_pelvis_frame, dtype=torch.float32).unsqueeze(0).cuda(),
+                quaternion=target_quaternion
+            )
+            
+            result_lift = self.curobo_planner.plan_single(start_state_b, target_pose_lift)
+            
+            if not result_lift.success.item():
+                print("✗ CUROBO failed to plan lift motion. Skipping to emergency release...")
                 print(f"\n🤲 === Phase 5: Release the Cup (Emergency) ===")
-                
-                # 현재 위치에 컵 배치 (Emergency)
                 final_eef_pos = base_env.sim.data.body_xpos[palm_body_id].copy()
                 emergency_cup_pos = final_eef_pos.copy()
-                emergency_cup_pos[2] = final_eef_pos[2] - 0.05  # EEF보다 5cm 아래 (Emergency)
+                emergency_cup_pos[2] = final_eef_pos[2] - 0.05
                 self.set_cup_position(base_env, emergency_cup_pos)
                 print(f"✓ Emergency cup placement at: {emergency_cup_pos}")
-                
                 self.release(duration=5)
-                
-                # Results Analysis
                 print(f"\n📊 === Phase 6: Results Analysis (Emergency) ===")
-                print(f"✓ Cup was released at emergency position due to planning failure")
+                print(f"✓ Cup was released at emergency position due to lift planning failure")
                 continue
             
-            planned_trajectory_b = result_b.get_interpolated_plan()
-            print(f"✓ CUROBO planned path to target: {len(planned_trajectory_b.position)} steps")
+            planned_trajectory_lift = result_lift.get_interpolated_plan()
+            print(f"✓ CUROBO planned lift path: {len(planned_trajectory_lift.position)} steps")
             
-            # B 위치로 이동 실행 (그리퍼 닫힌 상태, 컵 따라감)
-            print(f"🚀 Executing move to target position...")
-            for timestep in range(len(planned_trajectory_b.position)):
-                planned_joints = planned_trajectory_b.position[timestep].cpu().numpy()
+            # Lift 실행
+            print(f"🚀 Executing lift motion...")
+            for timestep in range(len(planned_trajectory_lift.position)):
+                planned_joints = planned_trajectory_lift.position[timestep].cpu().numpy()
                 action = self.convert_curobo_to_action(planned_joints, config.multistep.n_action_steps, grip_state='close')
                 self.env.step(action)
                 
@@ -662,8 +665,115 @@ class G1SimulationWithCurobo:
                 current_eef_pos = base_env.sim.data.body_xpos[palm_body_id].copy()
                 self.set_cup_position(base_env, current_eef_pos)
                 
-                if timestep % 10 == 0 or timestep == len(planned_trajectory_b.position) - 1:
-                    print(f"  Step {timestep+1}/{len(planned_trajectory_b.position)}")
+                if timestep % 5 == 0 or timestep == len(planned_trajectory_lift.position) - 1:
+                    print(f"  Lift Step {timestep+1}/{len(planned_trajectory_lift.position)}")
+            
+            # Step 2: Move XY - 목표 위치 위로 수평 이동
+            print(f"\n➡️ === Step 2: Move XY (Horizontal to target) ===")
+            current_state_after_lift = self.get_current_state(base_env)
+            current_joints_after_lift = torch.tensor(current_state_after_lift['joint_positions'], dtype=torch.float32).unsqueeze(0).cuda()
+            start_state_xy = JointState.from_position(current_joints_after_lift, joint_names=planning_joint_names)
+            
+            # 목표 위치 위로 수평 이동 (높이 유지)
+            target_xy_pos = target_world_pos.copy()
+            target_xy_pos[2] = lift_pos[2]  # 올라간 높이 유지
+            print(f"✓ Target XY position (at lift height): {target_xy_pos}")
+            
+            target_xy_relative = target_xy_pos - pelvis_pos_world
+            target_xy_pelvis_frame = pelvis_rotation.as_matrix().T @ target_xy_relative
+            print(f"✓ Target XY in pelvis frame: {target_xy_pelvis_frame}")
+            
+            target_pose_xy = Pose(
+                position=torch.tensor(target_xy_pelvis_frame, dtype=torch.float32).unsqueeze(0).cuda(),
+                quaternion=target_quaternion
+            )
+            
+            result_xy = self.curobo_planner.plan_single(start_state_xy, target_pose_xy)
+            
+            if not result_xy.success.item():
+                print("✗ CUROBO failed to plan XY motion. Skipping to emergency release...")
+                print(f"\n🤲 === Phase 5: Release the Cup (Emergency) ===")
+                final_eef_pos = base_env.sim.data.body_xpos[palm_body_id].copy()
+                emergency_cup_pos = final_eef_pos.copy()
+                emergency_cup_pos[2] = final_eef_pos[2] - 0.05
+                self.set_cup_position(base_env, emergency_cup_pos)
+                print(f"✓ Emergency cup placement at: {emergency_cup_pos}")
+                self.release(duration=5)
+                print(f"\n📊 === Phase 6: Results Analysis (Emergency) ===")
+                print(f"✓ Cup was released at emergency position due to XY planning failure")
+                continue
+            
+            planned_trajectory_xy = result_xy.get_interpolated_plan()
+            print(f"✓ CUROBO planned XY path: {len(planned_trajectory_xy.position)} steps")
+            
+            # XY 이동 실행
+            print(f"🚀 Executing XY motion...")
+            for timestep in range(len(planned_trajectory_xy.position)):
+                planned_joints = planned_trajectory_xy.position[timestep].cpu().numpy()
+                action = self.convert_curobo_to_action(planned_joints, config.multistep.n_action_steps, grip_state='close')
+                self.env.step(action)
+                
+                # 컵을 EEF 위치에 계속 동기화
+                current_eef_pos = base_env.sim.data.body_xpos[palm_body_id].copy()
+                self.set_cup_position(base_env, current_eef_pos)
+                
+                if timestep % 5 == 0 or timestep == len(planned_trajectory_xy.position) - 1:
+                    print(f"  XY Step {timestep+1}/{len(planned_trajectory_xy.position)}")
+            
+            # Step 3: Lower - 목표 위치로 부드럽게 하강
+            print(f"\n📉 === Step 3: Lower (Smooth descent to target) ===")
+            current_state_after_xy = self.get_current_state(base_env)
+            current_joints_after_xy = torch.tensor(current_state_after_xy['joint_positions'], dtype=torch.float32).unsqueeze(0).cuda()
+            start_state_lower = JointState.from_position(current_joints_after_xy, joint_names=planning_joint_names)
+            
+            # 목표 위치에서 약간 떨어진 곳으로 하강 (approach offset 적용)
+            approach_offset = np.array([-0.06, -0.12, 0.0])  # target에서 6cm 뒤, 12cm 옆
+            target_approach_pos_world = target_world_pos + approach_offset
+            target_lower_relative = target_approach_pos_world - pelvis_pos_world
+            target_lower_pelvis_frame = pelvis_rotation.as_matrix().T @ target_lower_relative
+            print(f"✓ Target world position: {target_world_pos}")
+            print(f"✓ Target approach position: {target_approach_pos_world}")
+            print(f"✓ Approach offset: {approach_offset}")
+            print(f"✓ Target lower in pelvis frame: {target_lower_pelvis_frame}")
+            
+            target_pose_lower = Pose(
+                position=torch.tensor(target_lower_pelvis_frame, dtype=torch.float32).unsqueeze(0).cuda(),
+                quaternion=target_quaternion
+            )
+            
+            result_lower = self.curobo_planner.plan_single(start_state_lower, target_pose_lower)
+            
+            if not result_lower.success.item():
+                print("✗ CUROBO failed to plan lower motion. Skipping to emergency release...")
+                print(f"\n🤲 === Phase 5: Release the Cup (Emergency) ===")
+                final_eef_pos = base_env.sim.data.body_xpos[palm_body_id].copy()
+                emergency_cup_pos = final_eef_pos.copy()
+                emergency_cup_pos[2] = final_eef_pos[2] - 0.05
+                self.set_cup_position(base_env, emergency_cup_pos)
+                print(f"✓ Emergency cup placement at: {emergency_cup_pos}")
+                self.release(duration=5)
+                print(f"\n📊 === Phase 6: Results Analysis (Emergency) ===")
+                print(f"✓ Cup was released at emergency position due to lower planning failure")
+                continue
+            
+            planned_trajectory_lower = result_lower.get_interpolated_plan()
+            print(f"✓ CUROBO planned lower path: {len(planned_trajectory_lower.position)} steps")
+            
+            # Lower 실행
+            print(f"🚀 Executing lower motion...")
+            for timestep in range(len(planned_trajectory_lower.position)):
+                planned_joints = planned_trajectory_lower.position[timestep].cpu().numpy()
+                action = self.convert_curobo_to_action(planned_joints, config.multistep.n_action_steps, grip_state='close')
+                self.env.step(action)
+                
+                # 컵을 EEF 위치에 계속 동기화
+                current_eef_pos = base_env.sim.data.body_xpos[palm_body_id].copy()
+                self.set_cup_position(base_env, current_eef_pos)
+                
+                if timestep % 5 == 0 or timestep == len(planned_trajectory_lower.position) - 1:
+                    print(f"  Lower Step {timestep+1}/{len(planned_trajectory_lower.position)}")
+            
+            print(f"✓ 3-step motion completed successfully!")
             
             # 6. Phase 4: Release the cup
             print(f"\n🤲 === Phase 5: Release the Cup ===")
