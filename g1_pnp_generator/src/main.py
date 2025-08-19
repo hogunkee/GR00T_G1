@@ -63,7 +63,7 @@ class MultiStepConfig:
     """Configuration for multi-step environment settings."""
     video_delta_indices: np.ndarray = field(default_factory=lambda: np.array([0]))
     state_delta_indices: np.ndarray = field(default_factory=lambda: np.array([0]))
-    n_action_steps: int = 1
+    n_action_steps: int = 16
     max_episode_steps: int = 500
 
 @dataclass
@@ -129,7 +129,7 @@ class G1SimulationWithCurobo:
             config.env_name, 
             enable_render=True,
             layout_ids=0,
-            style_ids=0,
+            style_ids=0
         )
         print(f"✓ Base environment created successfully")
         
@@ -333,6 +333,36 @@ class G1SimulationWithCurobo:
             print(f"Error getting table obstacle info: {e}")
             return None
 
+    def convert_curobo_to_action(self, planned_joints, n_action_steps):
+        """Convert CUROBO planned joint values to environment action format."""
+        action_space = self.env.single_action_space
+        action = {k: np.zeros((1, n_action_steps, v.shape[-1]), dtype=np.float32) 
+                  for k, v in action_space.spaces.items() if hasattr(v, 'shape')}
+        
+        # CUROBO planned joints: [waist(3), left_arm(7)] = 10 DOF
+        waist_joints = planned_joints[0:3]  # waist_yaw, waist_roll, waist_pitch
+        left_arm_joints = planned_joints[3:10]  # left arm 7DOF
+        
+        # Set all sub-steps to the same target joint values
+        for sub_step in range(n_action_steps):
+            if 'action.waist' in action:
+                action['action.waist'][0, sub_step, :] = waist_joints
+            
+            if 'action.left_arm' in action:
+                action['action.left_arm'][0, sub_step, :] = left_arm_joints
+            
+            # Keep right arm in default pose
+            if 'action.right_arm' in action:
+                right_arm_pose = np.array([0.0, -0.1, 0.0, -0.2, 0.0, 0.0, 0.0])
+                action['action.right_arm'][0, sub_step, :] = right_arm_pose
+            
+            # Keep left hand open
+            if 'action.left_hand' in action:
+                open_pose = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
+                action['action.left_hand'][0, sub_step, :] = open_pose
+        
+        return action
+
     def run_simulation(self, config: SimulationConfig) -> None:
         """Run the simulation for the specified number of episodes."""
         start_time = time.time()
@@ -399,8 +429,9 @@ class G1SimulationWithCurobo:
 
             print(f"Cup coordinates relative to robot: {cup_pos_pelvis_frame}")
 
-            # 직접 컵 위치 사용
-            target_pos_pelvis_frame = cup_pos_pelvis_frame
+            # 컵 위치에서 x축 -10cm, y축 -10cm 떨어진 위치로 목표 설정
+            target_pos_pelvis_frame = cup_pos_pelvis_frame + np.array([-0.1, +0.05, 0])  # x축 -10cm, y축 -10cm
+            print(f"Target position (offset from cup): {target_pos_pelvis_frame}")
 
             # CUROBO용 quaternion 순서로 변환 - [w, x, y, z] 순서 유지
             target_quaternion_pelvis_frame = torch.tensor([
@@ -487,77 +518,28 @@ class G1SimulationWithCurobo:
             #     for waist_idx in [0, 1, 2]:  # waist joint indices
             #         planned_trajectory.position[step_idx, waist_idx] = 0.0
 
-            # 5. CUROBO trajectory를 직접 적용
-            print(f"\n--- Executing {len(planned_trajectory.position)} planned steps directly... ---")
-            
-            joint_mapping = [
-                ('waist_yaw_joint', 'robot0_waist_yaw_joint'),
-                ('waist_roll_joint', 'robot0_waist_roll_joint'), 
-                ('waist_pitch_joint', 'robot0_waist_pitch_joint'),
-                ('left_shoulder_pitch_joint', 'robot0_left_shoulder_pitch_joint'),
-                ('left_shoulder_roll_joint', 'robot0_left_shoulder_roll_joint'),
-                ('left_shoulder_yaw_joint', 'robot0_left_shoulder_yaw_joint'),
-                ('left_elbow_joint', 'robot0_left_elbow_joint'),
-                ('left_wrist_roll_joint', 'robot0_left_wrist_roll_joint'),
-                ('left_wrist_pitch_joint', 'robot0_left_wrist_pitch_joint'),
-                ('left_wrist_yaw_joint', 'robot0_left_wrist_yaw_joint')
-            ]
+            # 5. CUROBO trajectory를 정상적인 action으로 실행
+            print(f"\n--- Executing {len(planned_trajectory.position)} planned steps using proper actions... ---")
             
             for timestep in range(len(planned_trajectory.position)):
                 try:
-                    current_base_env = self.get_base_environment()
-                    
                     planned_joints = planned_trajectory.position[timestep].cpu().numpy()
                     
-                    # CUROBO 계획된 joint 값을 직접 설정
-                    for i, (curobo_name, sim_name) in enumerate(joint_mapping):
-                        try:
-                            joint_id = current_base_env.sim.model.joint_name2id(sim_name)
-                            current_base_env.sim.data.qpos[joint_id] = planned_joints[i]
-                            current_base_env.sim.data.qvel[joint_id] = 0.0
-                        except Exception as e:
-                            print(f"    Warning: Failed to set {sim_name}: {e}")
+                    # CUROBO planned joints를 action 형식으로 변환
+                    action = self.convert_curobo_to_action(planned_joints, config.multistep.n_action_steps)
                     
-                    # 시뮬레이션 forward pass 수행
-                    current_base_env.sim.forward()
-                    
-                    # 비디오 녹화를 위해 더미 액션으로 step 수행하되, joint 값은 다시 강제 설정
-                    n_action_steps = config.multistep.n_action_steps
-                    dummy_action = {k: np.zeros((1, n_action_steps, v.shape[-1]), dtype=np.float32) 
-                                   for k, v in self.env.single_action_space.spaces.items() if hasattr(v, 'shape')}
-                    
-                    obs, rewards, terminations, truncations, env_infos = self.env.step(dummy_action)
-                    
-                    # env.step() 후에 joint 값이 변경되었을 수 있으므로 다시 강제 설정
-                    current_base_env = self.get_base_environment()
-                    for i, (curobo_name, sim_name) in enumerate(joint_mapping):
-                        try:
-                            joint_id = current_base_env.sim.model.joint_name2id(sim_name)
-                            current_base_env.sim.data.qpos[joint_id] = planned_joints[i]
-                            current_base_env.sim.data.qvel[joint_id] = 0.0
-                        except Exception as e:
-                            pass
-                    
-                    current_base_env.sim.forward()
+                    # 정상적인 action으로 step 수행
+                    obs, rewards, terminations, truncations, env_infos = self.env.step(action)
                     
                     if timestep % 10 == 0 or timestep == len(planned_trajectory.position) - 1:
                         print(f"  Step {timestep+1}/{len(planned_trajectory.position)}")
                         print(f"    CUROBO planned joint values: {[f'{x:.3f}' for x in planned_joints]}")
                         
-                        # 시뮬레이션에서 실제 joint 값 확인
-                        sim_joint_values = []
-                        for i, (curobo_name, sim_name) in enumerate(joint_mapping):
-                            try:
-                                joint_id = current_base_env.sim.model.joint_name2id(sim_name)
-                                sim_joint_values.append(current_base_env.sim.data.qpos[joint_id])
-                            except:
-                                sim_joint_values.append(0.0)
-                        
-                        print(f"    Simulation actual joint values: {[f'{x:.3f}' for x in sim_joint_values]}")
-                        
-                        # 값이 일치하는지 확인
-                        max_diff = max(abs(planned_joints[i] - sim_joint_values[i]) for i in range(len(planned_joints)))
-                        print(f"    Maximum difference: {max_diff:.6f}")
+                        # Action을 10개 한번에 출력 (waist 3개 + left_arm 7개)
+                        action_waist = action['action.waist'][0, 0, :].tolist()
+                        action_left_arm = action['action.left_arm'][0, 0, :].tolist()
+                        action_combined = action_waist + action_left_arm
+                        print(f"    Action combined (10DOF): {[f'{x:.3f}' for x in action_combined]}")
                     
                     if terminations[0] or truncations[0]:
                         print("  Episode terminated early.")
@@ -570,6 +552,7 @@ class G1SimulationWithCurobo:
             # 6. 최종 EEF 위치 확인
             print(f"\n--- Final EEF Position Analysis ---")
             try:
+                current_base_env = self.get_base_environment()
                 palm_body_id = current_base_env.sim.model.body_name2id('robot0_left_eef')
                 final_palm_position = current_base_env.sim.data.body_xpos[palm_body_id].copy()
                 

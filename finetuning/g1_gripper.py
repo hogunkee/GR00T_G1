@@ -29,7 +29,7 @@ from functools import partial
 # Add the robocasa and robosuite paths to enable imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'robocasa_g1'))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'robosuite_g1'))
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'gr00t_g1'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'gr00t'))
 
 import robocasa  # Register robocasa environments
 import robosuite
