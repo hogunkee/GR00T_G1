@@ -1416,7 +1416,7 @@ DATA_CONFIG_MAP = {
     "dex31_g1_arms_waist": Dex31G1ArmsWaistDataConfig(),    # Adaptation of GR1 policy to G1
     "dex31_g1_full_body": Dex31G1FullBodyDataConfig(),
     "g1_to_gr1": Gr1ForG1TuningDataConfig(),    # Fine-tune GR1 Policy with G1 data
-    "g1_funetune": G1FinetuneDataConfig(),      # Fine-tune G1 policy with G1 data
+    "g1_finetune": G1FinetuneDataConfig(),      # Fine-tune G1 policy with G1 data
     "oxe_droid": OxeDroidDataConfig(),
     "agibot_genie1": AgibotGenie1DataConfig(),
 }
