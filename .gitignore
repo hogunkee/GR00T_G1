@@ -125,3 +125,4 @@ output/
 videos/
 .github/
 trajectory_data/
+MUJOCO_LOG.TXT
