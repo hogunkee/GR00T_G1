@@ -109,12 +109,12 @@ class PreStateActionRetarget(InvertibleModalityTransform):
             if key not in data:
                 continue
             if 'left_hand' in key:
-                value = data[key]
+                value = data[key]    # scaling
                 pinky = value[:,:,0:1]
                 ring = value[:,:,1:2]
                 middle = value[:,:,2:3]
                 index = value[:,:,3:4]
-                thumb = value[:,:,4:5]
+                thumb = value[:,:,4:5] / 1.5   # scaling
                 theta = value[:,:,5:6]
                 new_index0 = - (index + middle) / 2
                 new_index1 = - (index + middle) / 2
@@ -122,16 +122,16 @@ class PreStateActionRetarget(InvertibleModalityTransform):
                 new_middle1 = - (ring + pinky) / 2
                 new_thumb0 = thumb
                 new_thumb1 = thumb
-                new_theta = theta - np.pi/2
+                new_theta = np.zeros_like(theta) #theta - np.pi/2
                 new_value = [new_index1, new_index0, new_middle1, new_middle0, new_thumb1, new_thumb0, new_theta]
                 data[key] = np.concatenate(new_value, -1)
             if 'right_hand' in key:
-                value = data[key]
+                value = data[key]/2.    # scaling
                 pinky = value[:,:,0:1]
                 ring = value[:,:,1:2]
                 middle = value[:,:,2:3]
                 index = value[:,:,3:4]
-                thumb = value[:,:,4:5]
+                thumb = value[:,:,4:5] / 1.5   # scaling
                 theta = value[:,:,5:6]
                 new_index0 = (index + middle) / 2
                 new_index1 = (index + middle) / 2
@@ -139,7 +139,7 @@ class PreStateActionRetarget(InvertibleModalityTransform):
                 new_middle1 = (ring + pinky) / 2
                 new_thumb0 = - thumb
                 new_thumb1 = - thumb
-                new_theta = - theta - np.pi/2
+                new_theta = np.zeros_like(theta) #- theta - np.pi/2
                 new_value = [new_index1, new_index0, new_middle1, new_middle0, new_thumb1, new_thumb0, new_theta]
                 data[key] = np.concatenate(new_value, -1)
             if 'left_arm' in key:
@@ -163,15 +163,53 @@ class PreStateActionRetarget(InvertibleModalityTransform):
         return data
 
 class PostStateActionRetarget(InvertibleModalityTransform):
-    # Apply: From G1 to GR1
-    def apply(self, data: dict[str, Any]) -> dict[str, Any]:
+    # Unapply: From G1 to GR1
+    def unapply(self, data: dict[str, Any]) -> dict[str, Any]:
         #print("apply to:", self.apply_to)
         #print("data:", data)
         for key in self.apply_to:
             if key not in data:
                 continue
+            value = data[key]
+            is_expanded = False
+            if len(value.shape)<3:
+                value = value[None, :]
+                is_expanded = True
+            if 'left_hand' in key:
+                index1 = -value[:,:,0:1]
+                index0 = -value[:,:,1:2]
+                middle1 = -value[:,:,2:3]
+                middle0 = -value[:,:,3:4]
+                thumb1 = value[:,:,4:5]
+                thumb0 = value[:,:,5:6]
+                theta = value[:,:,6:7]
+                #index1, index0, middle1, middle0, thumb1, thumb0, theta = value
+                new_index = (index0 + index1) / 2
+                new_middle = new_index
+                new_ring = (middle0 + middle1) / 2
+                new_pinky = new_ring
+                new_thumb = (thumb0 + thumb1) / 2
+                new_theta = theta + np.pi/2
+                new_value = [new_pinky, new_ring, new_middle, new_index, new_thumb, new_theta]
+                data[key] = np.concatenate(new_value, -1)
+            if 'right_hand' in key:
+                index1 = value[:,:,0:1]
+                index0 = value[:,:,1:2]
+                middle1 = value[:,:,2:3]
+                middle0 = value[:,:,3:4]
+                thumb1 = -value[:,:,4:5]
+                thumb0 = -value[:,:,5:6]
+                theta = -value[:,:,6:7]
+                #index1, index0, middle1, middle0, thumb1, thumb0, theta = value
+                new_index = (index0 + index1) / 2
+                new_middle = new_index
+                new_ring = (middle0 + middle1) / 2
+                new_pinky = new_ring
+                new_thumb = (thumb0 + thumb1) / 2
+                new_theta = theta + np.pi/2
+                new_value = [new_pinky, new_ring, new_middle, new_index, new_thumb, new_theta]
+                data[key] = np.concatenate(new_value, -1)
             if 'left_arm' in key:
-                value = data[key]
                 value[:,:,3] = value[:,:,3] - np.pi/2
                 B, K, _ = value.shape
                 angles = value[:,:,4:].copy().reshape(B*K, 3)
@@ -180,7 +218,6 @@ class PostStateActionRetarget(InvertibleModalityTransform):
                 value[:,:,4] = -value[:,:,4]
                 data[key] = value
             if 'right_arm' in key:
-                value = data[key]
                 value[:,:,3] = value[:,:,3] - np.pi/2
                 B, K, _ = value.shape
                 angles = value[:,:,4:].copy().reshape(B*K, 3)
@@ -188,15 +225,53 @@ class PostStateActionRetarget(InvertibleModalityTransform):
                 value[:,:,4:] = new_angles.reshape(B, K, 3)
                 value[:,:,4] = -value[:,:,4]
                 data[key] = value
+            if is_expanded:
+                data[key] = data[key][0]
         return data
 
-    # Unapply: From GR1 to G1
-    def unapply(self, data: dict[str, Any]) -> dict[str, Any]:
+    # Apply: From GR1 to G1
+    def apply(self, data: dict[str, Any]) -> dict[str, Any]:
         for key in self.apply_to:
             if key not in data:
                 continue
+            value = data[key]
+            is_expanded = False
+            if len(value.shape)<3:
+                value = value[None, :]
+                is_expanded = True
+            if 'left_hand' in key:
+                pinky = value[:,:,0:1]
+                ring = value[:,:,1:2]
+                middle = value[:,:,2:3]
+                index = value[:,:,3:4]
+                thumb = value[:,:,4:5] / 1.5   # scaling
+                theta = value[:,:,5:6]
+                new_index0 = - (index + middle) / 2
+                new_index1 = - (index + middle) / 2
+                new_middle0 = - (ring + pinky) / 2
+                new_middle1 = - (ring + pinky) / 2
+                new_thumb0 = thumb
+                new_thumb1 = thumb
+                new_theta = np.zeros_like(theta) #theta - np.pi/2
+                new_value = [new_index1, new_index0, new_middle1, new_middle0, new_thumb1, new_thumb0, new_theta]
+                data[key] = np.concatenate(new_value, -1)
+            if 'right_hand' in key:
+                pinky = value[:,:,0:1]
+                ring = value[:,:,1:2]
+                middle = value[:,:,2:3]
+                index = value[:,:,3:4]
+                thumb = value[:,:,4:5] / 1.5   # scaling
+                theta = value[:,:,5:6]
+                new_index0 = (index + middle) / 2
+                new_index1 = (index + middle) / 2
+                new_middle0 = (ring + pinky) / 2
+                new_middle1 = (ring + pinky) / 2
+                new_thumb0 = - thumb
+                new_thumb1 = - thumb
+                new_theta = np.zeros_like(theta) #- theta - np.pi/2
+                new_value = [new_index1, new_index0, new_middle1, new_middle0, new_thumb1, new_thumb0, new_theta]
+                data[key] = np.concatenate(new_value, -1)
             if 'left_arm' in key:
-                value = data[key]
                 value[:,:,3] = value[:,:,3] + np.pi/2
                 B, K, _ = value.shape
                 value[:,:,4] = -value[:,:,4]
@@ -205,7 +280,6 @@ class PostStateActionRetarget(InvertibleModalityTransform):
                 value[:,:,4:] = new_angles.reshape(B, K, 3)
                 data[key] = value
             if 'right_arm' in key:
-                value = data[key]
                 value[:,:,3] = value[:,:,3] + np.pi/2
                 B, K, _ = value.shape
                 value[:,:,4] = -value[:,:,4]
@@ -213,6 +287,8 @@ class PostStateActionRetarget(InvertibleModalityTransform):
                 new_angles = Rotation.from_euler('xzy', angles).as_euler('xyz')
                 value[:,:,4:] = new_angles.reshape(B, K, 3)
                 data[key] = value
+            if is_expanded:
+                data[key] = data[key][0]
         return data
 
 
