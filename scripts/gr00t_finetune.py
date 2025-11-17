@@ -200,6 +200,11 @@ def main(config: ArgsConfig):
         # Update the action head config
         new_action_head_config = model.action_head.config
         new_action_head_config.action_horizon = data_action_horizon
+        # Update DiT denoising steps
+        #print("DiT num_inference_timesteps")
+        #print("Origin:", new_action_head_config.num_inference_timesteps)
+        #new_action_head_config.num_inference_timesteps = 8
+        #print("Updated:", new_action_head_config.num_inference_timesteps)
 
         # Import the FlowmatchingActionHead class
         from gr00t.model.action_head.flow_matching_action_head import (

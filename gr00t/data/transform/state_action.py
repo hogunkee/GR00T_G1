@@ -415,6 +415,7 @@ class Normalizer:
 
             # Set the normalized values to the original values where std == 0
             normalized[..., ~mask] = x[..., ~mask].to(x.dtype)
+            normalized = torch.clamp(normalized, -1, 1)
 
         elif self.mode == "min_max":
             # Range of min_max is [-1, 1]
