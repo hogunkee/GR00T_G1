@@ -71,6 +71,7 @@ class Gr00tPolicy(BasePolicy):
         modality_transform: ComposedModalityTransform,
         denoising_steps: Optional[int] = None,
         device: Union[int, str] = "cuda" if torch.cuda.is_available() else "cpu",
+        phase_weighted_loss: bool = False,
     ):
         """
         Initialize the Gr00tPolicy.
@@ -118,6 +119,8 @@ class Gr00tPolicy(BasePolicy):
             ):
                 self.model.action_head.num_inference_timesteps = denoising_steps
                 print(f"Set action denoising steps to {denoising_steps}")
+        
+        self.phase_weighted_loss = phase_weighted_loss
 
     def apply_transforms(self, obs: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -274,6 +277,8 @@ class Gr00tPolicy(BasePolicy):
             # Update the action head config
             new_action_head_config = model.action_head.config
             new_action_head_config.action_horizon = expected_action_horizon
+            if self.phase_weighted_loss:
+                new_action_head_config.phase_weighted_loss = True
 
             # Import the FlowmatchingActionHead class
             from gr00t.model.action_head.flow_matching_action_head import (

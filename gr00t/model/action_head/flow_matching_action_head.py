@@ -156,6 +156,8 @@ class FlowmatchingActionHeadConfig(PretrainedConfig):
         default=32, metadata={"help": "Number of target vision tokens."}
     )
 
+    phase_weighted_loss: bool = field(default=False, metadata={"help": "Whether to use phase weighted loss."})
+
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         for key, value in kwargs.items():
@@ -340,10 +342,27 @@ class FlowmatchingActionHead(nn.Module):
         pred = self.action_decoder(model_output, embodiment_id)
         pred_actions = pred[:, -actions.shape[1] :]
 
-        # Slice out only the action portion of pred and target.
-        action_mask = action_input.action_mask
-        loss = F.mse_loss(pred_actions, velocity, reduction="none") * action_mask
-        loss = loss.sum() / action_mask.sum()
+        # assert NotImplementedError("Flow matching action head loss needs to be checked. !!Negative Phase Actions!!")
+        if self.config.phase_weighted_loss:
+            action_mask = action_input.action_mask
+            gt_phase_t = (actions[:,:, 30:31] + 1)/2
+            upper_loss = F.mse_loss(pred_actions[:,:, :28], velocity[:,:, :28], reduction="none")
+            loco_loss = F.mse_loss(pred_actions[:,:, 28:30], velocity[:,:, 28:30], reduction="none")
+            phase_loss = F.mse_loss(pred_actions[:,:, 30:31], velocity[:,:, 30:31], reduction="none")
+            loss = (gt_phase_t * upper_loss * action_mask[:,:,:28]).sum() \
+                     + ((1 - gt_phase_t) * loco_loss * action_mask[:,:,28:30]).sum() \
+                     + (phase_loss * action_mask[:,:,30:31]).sum()
+            loss = loss / action_mask.sum()
+            # print('-'*30)
+            # print('upper:', upper_loss.mean().item(), 'loco:', loco_loss.mean().item(), 'phase:', phase_loss.mean().item())
+            # print('phase:', gt_phase_t.mean().item())
+            # loss = (gt_phase_t * upper_loss + (1 - gt_phase_t) * loco_loss + phase_loss) * action_mask
+            # loss = loss.sum() / action_mask.sum()
+        else:
+            # Slice out only the action portion of pred and target.
+            action_mask = action_input.action_mask
+            loss = F.mse_loss(pred_actions, velocity, reduction="none") * action_mask
+            loss = loss.sum() / action_mask.sum()
         output_dict = {
             "loss": loss,
         }

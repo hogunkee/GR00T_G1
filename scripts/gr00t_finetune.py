@@ -122,6 +122,7 @@ class ArgsConfig:
     balance_trajectory_weights: bool = True
     """Used in LeRobotMixtureDataset. If True, sample trajectories within a dataset weighted by their length; otherwise, equal weighting."""
 
+    phase_weighted_loss: bool = False
 
 #####################################################################################
 # main training function
@@ -200,6 +201,8 @@ def main(config: ArgsConfig):
         # Update the action head config
         new_action_head_config = model.action_head.config
         new_action_head_config.action_horizon = data_action_horizon
+        if config.phase_weighted_loss:
+            new_action_head_config.phase_weighted_loss = True
         # Update DiT denoising steps
         #print("DiT num_inference_timesteps")
         #print("Origin:", new_action_head_config.num_inference_timesteps)
