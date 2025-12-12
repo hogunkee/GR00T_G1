@@ -106,6 +106,9 @@ class Gr00tPolicy(BasePolicy):
         else:
             self.embodiment_tag = embodiment_tag
 
+        # Phase-weighted loss
+        self.phase_weighted_loss = phase_weighted_loss
+
         # Load model
         self._load_model(model_path)
         # Load transforms
@@ -120,7 +123,6 @@ class Gr00tPolicy(BasePolicy):
                 self.model.action_head.num_inference_timesteps = denoising_steps
                 print(f"Set action denoising steps to {denoising_steps}")
         
-        self.phase_weighted_loss = phase_weighted_loss
 
     def apply_transforms(self, obs: Dict[str, Any]) -> Dict[str, Any]:
         """

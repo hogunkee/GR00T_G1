@@ -87,6 +87,8 @@ class ArgsConfig:
     http_server: bool = False
     """Whether to run it as HTTP server. Default is ZMQ server."""
 
+    phase_weighted_loss: bool = False
+
 
 #####################################################################################
 
@@ -156,6 +158,7 @@ def main(args: ArgsConfig):
             modality_transform=modality_transform,
             embodiment_tag=args.embodiment_tag,
             denoising_steps=args.denoising_steps,
+            phase_weighted_loss=args.phase_weighted_loss
         )
 
         # Start the server
