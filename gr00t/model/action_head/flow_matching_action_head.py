@@ -345,13 +345,13 @@ class FlowmatchingActionHead(nn.Module):
         # assert NotImplementedError("Flow matching action head loss needs to be checked. !!Negative Phase Actions!!")
         if self.config.phase_weighted_loss:
             action_mask = action_input.action_mask
-            gt_phase_t = (actions[:,:, 30:31] + 1)/2
+            gt_phase_t = (actions[:,:, 31:32] + 1)/2
             upper_loss = F.mse_loss(pred_actions[:,:, :28], velocity[:,:, :28], reduction="none")
-            loco_loss = F.mse_loss(pred_actions[:,:, 28:30], velocity[:,:, 28:30], reduction="none")
-            phase_loss = F.mse_loss(pred_actions[:,:, 30:31], velocity[:,:, 30:31], reduction="none")
+            loco_loss = F.mse_loss(pred_actions[:,:, 28:31], velocity[:,:, 28:31], reduction="none")
+            phase_loss = F.mse_loss(pred_actions[:,:, 31:32], velocity[:,:, 31:32], reduction="none")
             loss = (gt_phase_t * upper_loss * action_mask[:,:,:28]).sum() \
-                     + ((1 - gt_phase_t) * loco_loss * action_mask[:,:,28:30]).sum() \
-                     + (phase_loss * action_mask[:,:,30:31]).sum()
+                     + ((1 - gt_phase_t) * loco_loss * action_mask[:,:,28:31]).sum() \
+                     + (phase_loss * action_mask[:,:,31:32]).sum()
             loss = loss / action_mask.sum()
             # print('-'*30)
             # print('upper:', upper_loss.mean().item(), 'loco:', loco_loss.mean().item(), 'phase:', phase_loss.mean().item())
