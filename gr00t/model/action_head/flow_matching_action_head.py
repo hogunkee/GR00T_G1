@@ -953,10 +953,15 @@ class MixtureFlowmatchingActionHead(nn.Module):
         self.config = config
         self.set_trainable_parameters(config.tune_projector, config.tune_diffusion_model)
 
-        # tau scheduling: 0.02 -> 0.001 in 5k steps
-        self.tau = 0.02 #2.0
+        # tau scheduling: 0.1 -> 0.001 in 10k steps
+        self.tau = 0.1 #2.0
         self.tau_end = 0.001
-        self.tau_decay = 0.999 #0.99995
+        self.tau_decay = 0.9995 #0.99995
+        
+        # tau scheduling: 0.02 -> 0.001 in 5k steps
+        # self.tau = 0.02 #2.0
+        # self.tau_end = 0.001
+        # self.tau_decay = 0.999 #0.99995
         
         # tau scheduling: 2.0 -> 0.3 in 50k steps
         # self.tau = 2.0
@@ -1127,6 +1132,10 @@ class MixtureFlowmatchingActionHead(nn.Module):
         r = torch.softmax(logits, dim=-1)                               # [B,T,2]
         r_man = r[..., 0:1]                                             # [B,T,1]
         r_man_detached = r_man.detach()
+
+        # r_align loss
+        target = torch.cat([gt_g, 1.0 - gt_g], dim=-1)  # [B,T,2]
+        l_r_align = F.kl_div(r.log(), target, reduction="batchmean")
         
         # responsibility-weighted expert loss
         experts_loss_t = (r_man_detached * l_man_t + (1.0 - r_man_detached) * l_loco_t)  # [B,T,1]
@@ -1173,6 +1182,7 @@ class MixtureFlowmatchingActionHead(nn.Module):
         elif self.version==3:
             lam_exp = linear_ramp(self.step, start=3000, end=10000)
             lam_phase = 0.3 * linear_ramp(self.step, start=5000, end=10000)
+            lam_r_align = 0.02 * (1-linear_ramp(self.step, start=0, end=5000)) + 0.002
             # if self.step < 3000: lam_exp = 0.0
             # else: lam_exp = 1.0
             # if self.step < 5000: lam_phase = 0.0
@@ -1183,7 +1193,8 @@ class MixtureFlowmatchingActionHead(nn.Module):
                             + lam_bal * bal_loss \
                             + lam_tv * tv_loss \
                             + lam_gt * gt_phase_loss \
-                            + lam_mix * l_mix
+                            + lam_mix * l_mix \
+                            + lam_r_align * l_r_align
             self.step += 1
         
         output_dict = {
@@ -1192,12 +1203,13 @@ class MixtureFlowmatchingActionHead(nn.Module):
             "loco-loss": (l_loco_t).mean().item(),
             "res-manip-loss": (r_man_detached * l_man_t).mean().item(),
             "res-loco-loss": ((1.0 - r_man_detached) * l_loco_t).mean().item(),
-            "phase-loss": phase_loss.mean().item(),
-            "gt-phase-loss": gt_phase_loss.mean().item(),
-            "bin-loss": bin_loss.mean().item(),
-            "bal-loss": bal_loss.mean().item(),
-            "tv-loss": tv_loss.mean().item(),
-            "mix-loss": l_mix.mean().item(),
+            "phase-loss": phase_loss,
+            "gt-phase-loss": gt_phase_loss,
+            "bin-loss": bin_loss,
+            "bal-loss": bal_loss,
+            "tv-loss": tv_loss,
+            "mix-loss": l_mix,
+            "r-align-loss": l_r_align,
         }
         return BatchFeature(data=output_dict)
 
