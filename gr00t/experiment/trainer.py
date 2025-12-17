@@ -74,6 +74,18 @@ class DualBrainTrainer(transformers.Trainer):
     def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
         outputs = model(inputs)
         loss = outputs["loss"]
+
+        # Log additional losses if present in outputs
+        if self.args.logging_steps > 0 and self.state.global_step % self.args.logging_steps == 0:
+            additional_metrics = {}
+            for key in ["manip-loss", "loco-loss", "phase-loss", "gt-phase-loss", \
+                        "res-manip-loss", "res-loco-loss", "bin-loss", "bal-loss", "tv-loss", "mix-loss"]:
+                if key in outputs:
+                    additional_metrics[key] = outputs[key]
+
+            if additional_metrics and self.state.is_world_process_zero:
+                self.log(additional_metrics)
+
         return (loss, outputs) if return_outputs else loss
 
     def create_optimizer(self):

@@ -122,7 +122,9 @@ class ArgsConfig:
     balance_trajectory_weights: bool = True
     """Used in LeRobotMixtureDataset. If True, sample trajectories within a dataset weighted by their length; otherwise, equal weighting."""
 
+    loss_type: Literal['guide', 'energy-expert'] = 'energy-expert'
 
+    model_type: Literal['gate', 'mixture'] = 'mixture'
 #####################################################################################
 # main training function
 #####################################################################################
@@ -192,38 +194,47 @@ def main(config: ArgsConfig):
 
     # Update action_horizon to match data config
     # Need to recreate action head with correct config since it was initialized with old config
-    if False: #data_action_horizon != model.action_head.config.action_horizon:
-        print(
-            f"Recreating action head with action_horizon {data_action_horizon} (was {model.action_head.config.action_horizon})"
-        )
+    
+    print(
+        f"Recreating GATE-FlowMatching action head with action_horizon {data_action_horizon} (was {model.action_head.config.action_horizon})"
+    )
+    # Update the action head config
+    new_action_head_config = model.action_head.config
+    new_action_head_config.action_horizon = data_action_horizon
+    # Update DiT denoising steps
+    #print("DiT num_inference_timesteps")
+    #print("Origin:", new_action_head_config.num_inference_timesteps)
+    #new_action_head_config.num_inference_timesteps = 8
+    #print("Updated:", new_action_head_config.num_inference_timesteps)
 
-        # Update the action head config
-        new_action_head_config = model.action_head.config
-        new_action_head_config.action_horizon = data_action_horizon
+    # Import the FlowmatchingActionHead class
+    from gr00t.model.action_head.flow_matching_action_head import (
+        GateFlowmatchingActionHead, MixtureFlowmatchingActionHead
+    )
 
-        # Import the FlowmatchingActionHead class
-        from gr00t.model.action_head.flow_matching_action_head import (
-            FlowmatchingActionHead,
-        )
+    # Create new action head with updated config
+    if config.model_type=='mixture':
+        print("Using MixtureFlowmatchingActionHead")
+        new_action_head = MixtureFlowmatchingActionHead(new_action_head_config)
+    else:
+        print("Using GateFlowmatchingActionHead")
+        new_action_head = GateFlowmatchingActionHead(new_action_head_config, config.loss_type)
 
-        # Create new action head with updated config
-        new_action_head = FlowmatchingActionHead(new_action_head_config)
+    # Copy the weights from the old action head to the new one
+    new_action_head.load_state_dict(model.action_head.state_dict(), strict=False)
 
-        # Copy the weights from the old action head to the new one
-        new_action_head.load_state_dict(model.action_head.state_dict(), strict=False)
+    # Replace the action head
+    model.action_head = new_action_head
 
-        # Replace the action head
-        model.action_head = new_action_head
+    # Update model config AND the action_head_cfg dictionary that gets saved
+    model.config.action_horizon = data_action_horizon
+    model.action_horizon = data_action_horizon
+    model.config.action_head_cfg["action_horizon"] = data_action_horizon
 
-        # Update model config AND the action_head_cfg dictionary that gets saved
-        model.config.action_horizon = data_action_horizon
-        model.action_horizon = data_action_horizon
-        model.config.action_head_cfg["action_horizon"] = data_action_horizon
-
-        # Set trainable parameters for the new action head
-        model.action_head.set_trainable_parameters(
-            tune_projector=config.tune_projector, tune_diffusion_model=config.tune_diffusion_model
-        )
+    # Set trainable parameters for the new action head
+    model.action_head.set_trainable_parameters(
+        tune_projector=config.tune_projector, tune_diffusion_model=config.tune_diffusion_model
+    )
 
     # Set the model's compute_dtype to bfloat16
     model.compute_dtype = "bfloat16"

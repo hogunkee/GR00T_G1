@@ -50,7 +50,8 @@ import tyro
 from gr00t.data.embodiment_tags import EMBODIMENT_TAG_MAPPING
 from gr00t.eval.robot import RobotInferenceClient, RobotInferenceServer
 from gr00t.experiment.data_config import DATA_CONFIG_MAP
-from gr00t.model.policy import Gr00tPolicy
+from gr00t.model.policy import Gr00tPolicy, Gr00tGatePolicy, Gr00tMixturePolicy
+# from gr00t.model.policy_gate import Gr00tGatePolicy
 
 
 @dataclass
@@ -88,6 +89,10 @@ class ArgsConfig:
     """Whether to run it as HTTP server. Default is ZMQ server."""
 
     phase_weighted_loss: bool = False
+
+    gate_model: bool = False
+
+    mixture_model: bool = False
 
 
 #####################################################################################
@@ -152,14 +157,31 @@ def main(args: ArgsConfig):
         modality_config = data_config.modality_config()
         modality_transform = data_config.transform()
 
-        policy = Gr00tPolicy(
-            model_path=args.model_path,
-            modality_config=modality_config,
-            modality_transform=modality_transform,
-            embodiment_tag=args.embodiment_tag,
-            denoising_steps=args.denoising_steps,
-            phase_weighted_loss=args.phase_weighted_loss
-        )
+        if args.gate_model:
+            policy = Gr00tGatePolicy(
+                model_path=args.model_path,
+                modality_config=modality_config,
+                modality_transform=modality_transform,
+                embodiment_tag=args.embodiment_tag,
+                denoising_steps=args.denoising_steps
+            )
+        elif args.mixture_model:
+            policy = Gr00tMixturePolicy(
+                model_path=args.model_path,
+                modality_config=modality_config,
+                modality_transform=modality_transform,
+                embodiment_tag=args.embodiment_tag,
+                denoising_steps=args.denoising_steps
+            )
+        else:
+            policy = Gr00tPolicy(
+                model_path=args.model_path,
+                modality_config=modality_config,
+                modality_transform=modality_transform,
+                embodiment_tag=args.embodiment_tag,
+                denoising_steps=args.denoising_steps,
+                phase_weighted_loss=args.phase_weighted_loss
+            )
 
         # Start the server
         if args.http_server:
