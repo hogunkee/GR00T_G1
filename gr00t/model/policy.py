@@ -28,7 +28,7 @@ from gr00t.data.dataset import ModalityConfig
 from gr00t.data.embodiment_tags import EmbodimentTag
 from gr00t.data.schema import DatasetMetadata
 from gr00t.data.transform.base import ComposedModalityTransform
-from gr00t.model.gr00t_n1 import GR00T_N1_5, GR00T_N1_5_Gate, GR00T_N1_5_Mixture
+from gr00t.model.gr00t_n1 import GR00T_N1_5, GR00T_N1_5_Gate, GR00T_N1_5_Mixture, GR00T_N1_5_MixtureDiT
 
 COMPUTE_DTYPE = torch.bfloat16
 
@@ -555,6 +555,113 @@ class Gr00tMixturePolicy(Gr00tPolicy):
 
             # Create new action head with updated config
             new_action_head = MixtureFlowmatchingActionHead(new_action_head_config)
+
+            # Copy the weights from the old action head to the new one
+            new_action_head.load_state_dict(model.action_head.state_dict(), strict=False)
+
+            # Replace the action head
+            model.action_head = new_action_head
+
+            # Update model config AND the action_head_cfg dictionary that gets saved
+            model.config.action_horizon = expected_action_horizon
+            model.action_horizon = expected_action_horizon
+            model.config.action_head_cfg["action_horizon"] = expected_action_horizon
+        self.model = model
+
+class Gr00tMixtureDiTPolicy(Gr00tPolicy):
+    """
+    A wrapper for Gr00t model checkpoints that handles loading the model, applying transforms,
+    making predictions, and unapplying transforms. This loads some custom configs, stats
+    and metadata related to the model checkpoints used
+    in the Gr00t model.
+    """
+
+    def __init__(
+        self,
+        model_path: str,
+        embodiment_tag: Union[str, EmbodimentTag],
+        modality_config: Dict[str, ModalityConfig],
+        modality_transform: ComposedModalityTransform,
+        denoising_steps: Optional[int] = None,
+        device: Union[int, str] = "cuda" if torch.cuda.is_available() else "cpu",
+        phase_weighted_loss: bool = False,
+    ):
+        """
+        Initialize the Gr00tPolicy.
+
+        Args:
+            model_path (str): Path to the model checkpoint directory or the huggingface hub id.
+            modality_config (Dict[str, ModalityConfig]): The modality config for the model.
+            modality_transform (ComposedModalityTransform): The modality transform for the model.
+            embodiment_tag (Union[str, EmbodimentTag]): The embodiment tag for the model.
+            denoising_steps: Number of denoising steps to use for the action head.
+            device (Union[int, str]): Device to run the model on.
+        """
+        try:
+            # NOTE(YL) this returns the local path to the model which is normally
+            # saved in ~/.cache/huggingface/hub/
+            model_path = snapshot_download(model_path, repo_type="model")
+            # HFValidationError, RepositoryNotFoundError
+        except (HFValidationError, RepositoryNotFoundError):
+            print(
+                f"Model not found or avail in the huggingface hub. Loading from local path: {model_path}"
+            )
+
+        self._modality_config = modality_config
+        self._modality_transform = modality_transform
+        self._modality_transform.eval()  # set this to eval mode
+        self.model_path = Path(model_path)
+        self.device = device
+
+        # Convert string embodiment tag to EmbodimentTag enum if needed
+        if isinstance(embodiment_tag, str):
+            self.embodiment_tag = EmbodimentTag(embodiment_tag)
+        else:
+            self.embodiment_tag = embodiment_tag
+
+        # Phase-weighted loss
+        self.phase_weighted_loss = phase_weighted_loss
+
+        # Load model
+        self._load_model(model_path)
+        # Load transforms
+        self._load_metadata(self.model_path / "experiment_cfg")
+        # Load horizons
+        self._load_horizons()
+
+        if denoising_steps is not None:
+            if hasattr(self.model, "action_head") and hasattr(
+                self.model.action_head, "num_inference_timesteps"
+            ):
+                self.model.action_head.num_inference_timesteps = denoising_steps
+                print(f"Set action denoising steps to {denoising_steps}")
+        
+    def _load_model(self, model_path):
+        model = GR00T_N1_5_MixtureDiT.from_pretrained(model_path, torch_dtype=COMPUTE_DTYPE)
+        model.eval()  # Set model to eval mode
+        model.to(device=self.device)  # type: ignore
+
+        # Update action_horizon to match modality config
+        # Get the expected action horizon from the modality config
+        expected_action_horizon = len(self._modality_config["action"].delta_indices)
+
+        
+        if expected_action_horizon != model.action_head.config.action_horizon:
+            print(
+                f"Policy: Recreating Gate-FlowMatching action head with action_horizon {expected_action_horizon} (was {model.action_head.config.action_horizon})"
+            )
+
+            # Update the action head config
+            new_action_head_config = model.action_head.config
+            new_action_head_config.action_horizon = expected_action_horizon
+            
+            # Import the FlowmatchingActionHead class
+            from gr00t.model.action_head.flow_matching_action_head import (
+                MixtureDiTFlowmatchingActionHead,
+            )
+
+            # Create new action head with updated config
+            new_action_head = MixtureDiTFlowmatchingActionHead(new_action_head_config)
 
             # Copy the weights from the old action head to the new one
             new_action_head.load_state_dict(model.action_head.state_dict(), strict=False)

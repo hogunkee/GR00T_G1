@@ -124,7 +124,7 @@ class ArgsConfig:
 
     loss_type: Literal['guide', 'energy-expert'] = 'energy-expert'
 
-    model_type: Literal['gate', 'mixture'] = 'mixture'
+    model_type: Literal['gate', 'mixture', 'mixture-dit'] = 'mixture-dit' #'mixture'
 #####################################################################################
 # main training function
 #####################################################################################
@@ -209,13 +209,16 @@ def main(config: ArgsConfig):
 
     # Import the FlowmatchingActionHead class
     from gr00t.model.action_head.flow_matching_action_head import (
-        GateFlowmatchingActionHead, MixtureFlowmatchingActionHead
+        GateFlowmatchingActionHead, MixtureFlowmatchingActionHead, MixtureDiTFlowmatchingActionHead
     )
 
     # Create new action head with updated config
     if config.model_type=='mixture':
         print("Using MixtureFlowmatchingActionHead")
         new_action_head = MixtureFlowmatchingActionHead(new_action_head_config)
+    elif config.model_type=='mixture-dit':
+        print("Using MixtureDiTFlowmatchingActionHead")
+        new_action_head = MixtureDiTFlowmatchingActionHead(new_action_head_config)
     else:
         print("Using GateFlowmatchingActionHead")
         new_action_head = GateFlowmatchingActionHead(new_action_head_config, config.loss_type)

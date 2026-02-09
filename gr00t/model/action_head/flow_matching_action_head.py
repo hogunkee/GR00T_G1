@@ -953,16 +953,18 @@ class MixtureFlowmatchingActionHead(nn.Module):
         self.config = config
         self.set_trainable_parameters(config.tune_projector, config.tune_diffusion_model)
 
-        # tau scheduling: 0.1 -> 0.001 in 10k steps
-        self.tau = 0.1 #2.0
-        self.tau_end = 0.001
-        self.tau_decay = 0.9995 #0.99995
-        
+        if self.version==4:
+            self.tau = 0.2
+            self.tau_end = 0.05
+            self.tau_decay = 0.9997
+        else: # scheduling: 0.1 -> 0.001 in 10k steps
+            self.tau = 0.1 #2.0
+            self.tau_end = 0.001
+            self.tau_decay = 0.9995 #0.99995
         # tau scheduling: 0.02 -> 0.001 in 5k steps
         # self.tau = 0.02 #2.0
         # self.tau_end = 0.001
         # self.tau_decay = 0.999 #0.99995
-        
         # tau scheduling: 2.0 -> 0.3 in 50k steps
         # self.tau = 2.0
         # self.tau_end = 0.3
@@ -1113,7 +1115,7 @@ class MixtureFlowmatchingActionHead(nn.Module):
         timestep_valid = (denom_a > 1e-6).float()
 
         # gt phase loss
-        gt_g = (actions[:,:, 31:32] + 1)/2
+        gt_g = ((actions[:,:, 31:32] + 1)/2).clamp(0.0, 1.0)
         gt_phase_loss_t = F.binary_cross_entropy_with_logits(logit_phase, gt_g)
         gt_phase_loss = (gt_phase_loss_t * timestep_valid).sum() / timestep_valid.sum().clamp(min=1.0)
 
@@ -1128,14 +1130,24 @@ class MixtureFlowmatchingActionHead(nn.Module):
         l_loco_t = (loco_loss  * mask_a).sum(dim=-1, keepdim=True) / denom_a
 
         self.tau = max(self.tau * self.tau_decay, self.tau_end)
-        logits = torch.cat([-l_man_t / self.tau, -l_loco_t / self.tau], dim=-1)  # [B,T,2]
+        if self.version==4: # r with ratio of loss
+            eps = 1e-6
+            diff_t = 0.5 * (l_man_t + l_loco_t).detach()  # [B,T,1]
+            l_man_n = l_man_t / (diff_t + eps)            # [B,T,1]
+            l_loco_n = l_loco_t / (diff_t + eps)          # [B,T,1]
+            logits = torch.cat([-l_man_n / self.tau, -l_loco_n / self.tau], dim=-1)  # [B,T,2]
+        else:
+            logits = torch.cat([-l_man_t / self.tau, -l_loco_t / self.tau], dim=-1)  # [B,T,2]
         r = torch.softmax(logits, dim=-1)                               # [B,T,2]
         r_man = r[..., 0:1]                                             # [B,T,1]
         r_man_detached = r_man.detach()
 
         # r_align loss
         target = torch.cat([gt_g, 1.0 - gt_g], dim=-1)  # [B,T,2]
-        l_r_align = F.kl_div(r.log(), target, reduction="batchmean")
+        log_r = torch.log_softmax(logits, dim=-1)
+        l_r_align_t = F.kl_div(log_r, target, reduction="none")
+        l_r_align = (l_r_align_t * timestep_valid).sum() / timestep_valid.sum().clamp(min=1.0)
+        # l_r_align = F.kl_div(r.log(), target, reduction="batchmean")
         
         # responsibility-weighted expert loss
         experts_loss_t = (r_man_detached * l_man_t + (1.0 - r_man_detached) * l_loco_t)  # [B,T,1]
@@ -1182,7 +1194,9 @@ class MixtureFlowmatchingActionHead(nn.Module):
         elif self.version==3:
             lam_exp = linear_ramp(self.step, start=3000, end=10000)
             lam_phase = 0.3 * linear_ramp(self.step, start=5000, end=10000)
-            lam_r_align = 0.02 * (1-linear_ramp(self.step, start=0, end=5000)) + 0.002
+            lam_r_align = 1.0 * (1-linear_ramp(self.step, start=0, end=3000))
+            # lam_r_align = 0.9 * (1-linear_ramp(self.step, start=0, end=5000)) + 0.1
+            # lam_r_align = 0.02 * (1-linear_ramp(self.step, start=0, end=5000)) + 0.002
             # if self.step < 3000: lam_exp = 0.0
             # else: lam_exp = 1.0
             # if self.step < 5000: lam_phase = 0.0
@@ -1196,6 +1210,20 @@ class MixtureFlowmatchingActionHead(nn.Module):
                             + lam_mix * l_mix \
                             + lam_r_align * l_r_align
             self.step += 1
+        elif self.version==4:
+            lam_exp = linear_ramp(self.step, start=3000, end=10000)
+            lam_phase = 0.3 * linear_ramp(self.step, start=5000, end=10000)
+            lam_r_align = 1.0 * (1-linear_ramp(self.step, start=0, end=3000))
+            lam_mix = 0.1 * linear_ramp(self.step, start=8000, end=15000)
+            loss = lam_exp * experts_loss + (1-lam_exp) * experts_gt_loss \
+                            + lam_phase * phase_loss \
+                            + lam_gt * gt_phase_loss \
+                            + lam_mix * l_mix \
+                            + lam_r_align * l_r_align \
+                            + lam_bin * bin_loss \
+                            + lam_bal * bal_loss \
+                            + lam_tv * tv_loss
+            self.step += 1
         
         output_dict = {
             "loss": loss,
@@ -1203,13 +1231,13 @@ class MixtureFlowmatchingActionHead(nn.Module):
             "loco-loss": (l_loco_t).mean().item(),
             "res-manip-loss": (r_man_detached * l_man_t).mean().item(),
             "res-loco-loss": ((1.0 - r_man_detached) * l_loco_t).mean().item(),
-            "phase-loss": phase_loss,
-            "gt-phase-loss": gt_phase_loss,
-            "bin-loss": bin_loss,
-            "bal-loss": bal_loss,
-            "tv-loss": tv_loss,
-            "mix-loss": l_mix,
-            "r-align-loss": l_r_align,
+            "phase-loss": phase_loss.item(),
+            "gt-phase-loss": gt_phase_loss.item(),
+            "bin-loss": bin_loss.item(),
+            "bal-loss": bal_loss.item(),
+            "tv-loss": tv_loss.item(),
+            "mix-loss": l_mix.item(),
+            "r-align-loss": l_r_align.item(),
         }
         return BatchFeature(data=output_dict)
 
@@ -1285,12 +1313,481 @@ class MixtureFlowmatchingActionHead(nn.Module):
             actions[:,:,:31] = actions[:,:,:31] + dt * pred_velocity
         
         if True:
-            min_val = 0.2
-            max_val = 0.8
+            min_val = 0.2 #0.09 #0.2
+            max_val = 0.8 #0.91 #0.8
             pred_phase = (pred_phase - min_val) / (max_val - min_val)  # 0 ~ 1
         
         pred_phase = (pred_phase * 2 - 1).clamp(-1, 1) # scale to -1 ~ 1
         actions = torch.cat([actions[:,:,:-1], pred_phase], -1)
+        
+        return BatchFeature(data={"action_pred": actions})
+
+    @property
+    def device(self):
+        return next(iter(self.parameters())).device
+
+    @property
+    def dtype(self):
+        return next(iter(self.parameters())).dtype
+
+
+class MixtureDiTFlowmatchingActionHead(nn.Module):
+    config_class = FlowmatchingActionHeadConfig
+    supports_gradient_checkpointing = True
+
+    def __init__(
+        self,
+        config: FlowmatchingActionHeadConfig
+    ):
+        super().__init__()
+        self.version = 3
+        self.step = 0
+
+        self.hidden_size = config.hidden_size
+        self.input_embedding_dim = config.input_embedding_dim
+
+        self.manip_model = DiT(**config.diffusion_model_cfg)
+        self.loco_model = DiT(**config.diffusion_model_cfg)
+        self.phase_model = GateHorizonTransformer(gate_dim=512, vl_dim=2048, state_dim=1536, horizon=config.action_horizon, num_layers=2, num_heads=4)
+        
+        self.action_dim = config.action_dim
+        self.action_horizon = config.action_horizon
+        self.num_inference_timesteps = config.num_inference_timesteps
+
+        self.state_encoder = CategorySpecificMLP(
+            num_categories=config.max_num_embodiments,
+            input_dim=config.max_state_dim,
+            hidden_dim=self.hidden_size,
+            output_dim=self.input_embedding_dim,
+        )
+        self.action_encoder = MultiEmbodimentActionEncoder(
+            action_dim=config.action_dim,
+            hidden_size=self.input_embedding_dim,
+            num_embodiments=config.max_num_embodiments,
+        )
+        self.manip_action_decoder = CategorySpecificMLP(
+            num_categories=config.max_num_embodiments,
+            input_dim=self.hidden_size,
+            hidden_dim=self.hidden_size,
+            output_dim=self.action_dim-1,
+        )
+        self.loco_action_decoder = CategorySpecificMLP(
+            num_categories=config.max_num_embodiments, 
+            input_dim=self.hidden_size,
+            hidden_dim=self.hidden_size,
+            output_dim=self.action_dim-1,
+        )
+        self.phase_action_decoder = CategorySpecificMLP(
+            num_categories=config.max_num_embodiments,
+            input_dim=self.hidden_size,
+            hidden_dim=self.hidden_size,
+            output_dim=1,
+        )
+        self.future_tokens = nn.Embedding(config.num_target_vision_tokens, self.input_embedding_dim)
+        nn.init.normal_(self.future_tokens.weight, mean=0.0, std=0.02)
+
+        self.vlln = (
+            nn.LayerNorm(config.backbone_embedding_dim) if config.use_vlln else nn.Identity()
+        )
+        self.vl_self_attention = (
+            SelfAttentionTransformer(**config.vl_self_attention_cfg)
+            if config.use_vlln
+            else nn.Identity()
+        )
+        
+        if config.add_pos_embed:
+            self.position_embedding = nn.Embedding(config.max_seq_len, self.input_embedding_dim)
+            nn.init.normal_(self.position_embedding.weight, mean=0.0, std=0.02)
+
+        self.beta_dist = Beta(config.noise_beta_alpha, config.noise_beta_beta)
+        self.num_timestep_buckets = config.num_timestep_buckets
+        self.config = config
+        self.set_trainable_parameters(config.tune_projector, config.tune_diffusion_model)
+
+        if self.version==4:
+            self.tau = 0.2
+            self.tau_end = 0.05
+            self.tau_decay = 0.9997
+        else: # scheduling: 0.1 -> 0.001 in 10k steps
+            self.tau = 0.1 #2.0
+            self.tau_end = 0.001
+            self.tau_decay = 0.9995 #0.99995
+
+    def set_trainable_parameters(self, tune_projector: bool, tune_diffusion_model: bool):
+        self.tune_projector = tune_projector
+        self.tune_diffusion_model = tune_diffusion_model
+        for p in self.parameters():
+            p.requires_grad = True
+        if not tune_projector:
+            self.state_encoder.requires_grad_(False)
+            self.action_encoder.requires_grad_(False)
+            self.manip_action_decoder.requires_grad_(False)
+            self.loco_action_decoder.requires_grad_(False)
+            self.phase_action_decoder.requires_grad_(False)
+            if self.config.add_pos_embed:
+                self.position_embedding.requires_grad_(False)
+        if not tune_diffusion_model:
+            self.manip_model.requires_grad_(False)
+            self.loco_model.requires_grad_(False)
+            self.phase_model.requires_grad_(False)
+        print(f"Tune action head projector: {self.tune_projector}")
+        print(f"Tune action head diffusion model: {self.tune_diffusion_model}")
+        # Check if any parameters are still trainable. If not, print a warning.
+        if not tune_projector and not tune_diffusion_model:
+            for name, p in self.named_parameters():
+                if p.requires_grad:
+                    print(f"Action head trainable parameter: {name}")
+        if not any(p.requires_grad for p in self.parameters()):
+            print("Warning: No action head trainable parameters found.")
+
+    def set_frozen_modules_to_eval_mode(self):
+        """
+        Huggingface will call model.train() at each training_step. To ensure
+        the expected behaviors for modules like dropout, batchnorm, etc., we
+        need to call model.eval() for the frozen modules.
+        """
+        if self.training:
+            if not self.tune_projector:
+                self.state_encoder.eval()
+                self.action_encoder.eval()
+                self.manip_action_decoder.eval()
+                self.loco_action_decoder.eval()
+                self.phase_action_decoder.eval()
+                if self.config.add_pos_embed:
+                    self.position_embedding.eval()
+            if not self.tune_diffusion_model:
+                self.manip_model.eval()
+                self.loco_model.eval()
+                self.phase_model.eval()
+
+    def sample_time(self, batch_size, device, dtype):
+        sample = self.beta_dist.sample([batch_size]).to(device, dtype=dtype)
+        return (self.config.noise_s - sample) / self.config.noise_s
+
+    def prepare_input(self, batch: dict) -> BatchFeature:
+        return BatchFeature(data=batch)
+
+    def process_backbone_output(self, backbone_output: BatchFeature) -> BatchFeature:
+        backbone_features = backbone_output["backbone_features"]
+        backbone_features = self.vlln(backbone_features)
+        backbone_features = self.vl_self_attention(backbone_features)
+        backbone_output["backbone_features"] = backbone_features
+        return backbone_output
+
+    def forward(self, backbone_output: BatchFeature, action_input: BatchFeature) -> BatchFeature:
+        # Set frozen modules to eval
+        self.set_frozen_modules_to_eval_mode()
+
+        backbone_output = self.process_backbone_output(backbone_output)
+
+        if self.config.expand_batch is not None:
+            for k, v in backbone_output.items():
+                ndim = len(v.shape)
+                factors = [self.config.expand_batch]
+                while len(factors) < ndim:
+                    factors.append(1)
+                factors = tuple(factors)
+                expanded = v.repeat(*factors)
+                backbone_output[k] = expanded
+
+            for k, v in action_input.items():
+                ndim = len(v.shape)
+                factors = [self.config.expand_batch]
+                while len(factors) < ndim:
+                    factors.append(1)
+                factors = tuple(factors)
+                expanded = v.repeat(*factors)
+                action_input[k] = expanded
+
+        # Get vision and language embeddings.
+        vl_embs = backbone_output.backbone_features
+        device = vl_embs.device
+
+        # Get embodiment ID.
+        embodiment_id = action_input.embodiment_id
+
+        # Embed state.
+        state_features = self.state_encoder(action_input.state, embodiment_id)
+
+        # Embed noised action trajectory.
+        actions = action_input.action
+        noise = torch.randn(actions.shape, device=actions.device, dtype=actions.dtype)
+        t = self.sample_time(actions.shape[0], device=actions.device, dtype=actions.dtype)
+        t = t[:, None, None]  # shape (B,1,1) for broadcast
+
+        noisy_trajectory = (1 - t) * noise + t * actions
+        noisy_trajectory[:,:,31:32] = 0
+        velocity = actions - noise
+
+        # Convert (continuous) t -> discrete if needed
+        t_discretized = (t[:, 0, 0] * self.num_timestep_buckets).long()
+        action_features = self.action_encoder(noisy_trajectory, t_discretized, embodiment_id)
+
+        # Maybe add position embedding.
+        if self.config.add_pos_embed:
+            pos_ids = torch.arange(action_features.shape[1], dtype=torch.long, device=device)
+            pos_embs = self.position_embedding(pos_ids).unsqueeze(0)
+            action_features = action_features + pos_embs
+
+        # Join vision, language, state and action embedding along sequence dimension.
+        future_tokens = self.future_tokens.weight.unsqueeze(0).expand(vl_embs.shape[0], -1, -1)
+        sa_embs = torch.cat((state_features, future_tokens, action_features), dim=1)
+
+        vl_attn_mask = backbone_output.backbone_attention_mask
+        manip_model_output = self.manip_model(
+            hidden_states=sa_embs,
+            encoder_hidden_states=vl_embs,
+            encoder_attention_mask=vl_attn_mask,
+            timestep=t_discretized,
+            return_all_hidden_states=False,  # NOTE (YL): not using flare now
+        )
+        loco_model_output = self.loco_model(
+            hidden_states=sa_embs,
+            encoder_hidden_states=vl_embs,
+            encoder_attention_mask=vl_attn_mask,
+            timestep=t_discretized,
+            return_all_hidden_states=False,  # NOTE (YL): not using flare now
+        )
+        pred_manip = self.manip_action_decoder(manip_model_output, embodiment_id)[:, -actions.shape[1] :]
+        pred_loco = self.loco_action_decoder(loco_model_output, embodiment_id)[:, -actions.shape[1] :]
+        
+        # sa_gate = torch.cat((state_features, future_tokens), dim=1)
+        logit_phase = self.phase_model(vl_embs, vl_attn_mask, state_features)
+        pred_phase = torch.sigmoid(logit_phase)
+
+        # assert NotImplementedError("Flow matching action head loss needs to be checked. !!Negative Phase Actions!!")
+        action_mask = action_input.action_mask
+        # gt_phase_t = (actions[:,:, 31:32] + 1)/2
+        manip_loss = F.mse_loss(pred_manip, velocity[:,:, :31], reduction="none")
+        loco_loss = F.mse_loss(pred_loco, velocity[:,:, :31], reduction="none")
+
+        # mask and norm
+        mask_a = action_mask[:, :, :31].float()  # [B,T,31]
+        denom_a = mask_a.sum(dim=-1, keepdim=True).clamp(min=1e-6)  # [B,T,1]
+        timestep_valid = (denom_a > 1e-6).float()
+
+        # gt phase loss
+        gt_g = ((actions[:,:, 31:32] + 1)/2).clamp(0.0, 1.0)
+        gt_phase_loss_t = F.binary_cross_entropy_with_logits(logit_phase, gt_g)
+        gt_phase_loss = (gt_phase_loss_t * timestep_valid).sum() / timestep_valid.sum().clamp(min=1.0)
+
+        # mixed noise
+        pred_mix = pred_phase * pred_manip + (1.0 - pred_phase) * pred_loco
+        mix_loss = F.mse_loss(pred_mix, velocity[:,:, :31], reduction="none")
+        l_mix_t = (mix_loss * mask_a).sum(dim=-1, keepdim=True) / denom_a
+        l_mix = (l_mix_t * timestep_valid).sum() / timestep_valid.sum().clamp(min=1.0)
+
+        ## responsibility ##
+        l_man_t  = (manip_loss * mask_a).sum(dim=-1, keepdim=True) / denom_a
+        l_loco_t = (loco_loss  * mask_a).sum(dim=-1, keepdim=True) / denom_a
+
+        self.tau = max(self.tau * self.tau_decay, self.tau_end)
+        if self.version==4: # r with ratio of loss
+            eps = 1e-6
+            diff_t = 0.5 * (l_man_t + l_loco_t).detach()  # [B,T,1]
+            l_man_n = l_man_t / (diff_t + eps)            # [B,T,1]
+            l_loco_n = l_loco_t / (diff_t + eps)          # [B,T,1]
+            logits = torch.cat([-l_man_n / self.tau, -l_loco_n / self.tau], dim=-1)  # [B,T,2]
+        else:
+            logits = torch.cat([-l_man_t / self.tau, -l_loco_t / self.tau], dim=-1)  # [B,T,2]
+        r = torch.softmax(logits, dim=-1)                               # [B,T,2]
+        r_man = r[..., 0:1]                                             # [B,T,1]
+        r_man_detached = r_man.detach()
+
+        # r_align loss
+        target = torch.cat([gt_g, 1.0 - gt_g], dim=-1)  # [B,T,2]
+        log_r = torch.log_softmax(logits, dim=-1)
+        l_r_align_t = F.kl_div(log_r, target, reduction="none")
+        l_r_align = (l_r_align_t * timestep_valid).sum() / timestep_valid.sum().clamp(min=1.0)
+        # l_r_align = F.kl_div(r.log(), target, reduction="batchmean")
+        
+        # responsibility-weighted expert loss
+        experts_loss_t = (r_man_detached * l_man_t + (1.0 - r_man_detached) * l_loco_t)  # [B,T,1]
+        experts_loss = (experts_loss_t * timestep_valid).sum() / timestep_valid.sum().clamp(min=1.0)
+        # energy-based phase-weighted expert loss
+        experts_gt_loss_t = (gt_g * l_man_t + (1.0 - gt_g) * l_loco_t)  # [B,T,1]
+        experts_gt_loss = (experts_gt_loss_t * timestep_valid).sum() / timestep_valid.sum().clamp(min=1.0)
+
+        # BCE target is r_man_detached (soft target)
+        phase_loss_t = F.binary_cross_entropy_with_logits(logit_phase, r_man_detached, reduction="none")
+        phase_loss = (phase_loss_t * timestep_valid).sum() / timestep_valid.sum().clamp(min=1.0)
+
+        # regularization
+        # binary prior: pushes p to {0,1}
+        bin_loss = (pred_phase * (1.0 - pred_phase) * timestep_valid).sum() / timestep_valid.sum().clamp(min=1.0)
+        # load balancing: keep average gate near rho (set rho based on expected ratio, or 0.5)
+        rho = 0.5
+        p_mean = (pred_phase * timestep_valid).sum() / timestep_valid.sum().clamp(min=1.0)
+        bal_loss = (p_mean - rho).pow(2)
+        # temporal smoothness (TV): fewer switches
+        tv_loss = (pred_phase[:, 1:] - pred_phase[:, :-1]).abs()
+        tv_loss = (tv_loss * timestep_valid[:, 1:]).sum() / timestep_valid[:, 1:].sum().clamp(min=1.0)
+
+        lam_phase = 1.0
+        lam_bin = 0.1
+        lam_bal = 0.1
+        lam_tv = 0.05
+        lam_gt = 1.0
+        lam_mix = 1.0
+        if self.version==1:
+            loss = experts_loss + lam_phase * phase_loss \
+                            + lam_bin * bin_loss \
+                            + lam_bal * bal_loss \
+                            + lam_tv * tv_loss \
+                            + lam_gt * gt_phase_loss
+        elif self.version==2:
+            loss = experts_loss + lam_phase * phase_loss \
+                            + lam_bin * bin_loss \
+                            + lam_bal * bal_loss \
+                            + lam_tv * tv_loss \
+                            + lam_gt * gt_phase_loss \
+                            + lam_mix * l_mix
+        # Curriculum learning for model version 3
+        elif self.version==3:
+            lam_exp = linear_ramp(self.step, start=3000, end=10000)
+            lam_phase = 0.3 * linear_ramp(self.step, start=5000, end=10000)
+            lam_r_align = 1.0 * (1-linear_ramp(self.step, start=0, end=3000))
+            # lam_r_align = 0.9 * (1-linear_ramp(self.step, start=0, end=5000)) + 0.1
+            # lam_r_align = 0.02 * (1-linear_ramp(self.step, start=0, end=5000)) + 0.002
+            # if self.step < 3000: lam_exp = 0.0
+            # else: lam_exp = 1.0
+            # if self.step < 5000: lam_phase = 0.0
+            # else: lam_phase = 1.0
+            loss = lam_exp * experts_loss + (1-lam_exp) * experts_gt_loss \
+                            + lam_phase * phase_loss \
+                            + lam_bin * bin_loss \
+                            + lam_bal * bal_loss \
+                            + lam_tv * tv_loss \
+                            + lam_gt * gt_phase_loss \
+                            + lam_mix * l_mix \
+                            + lam_r_align * l_r_align
+            self.step += 1
+        elif self.version==4:
+            lam_exp = linear_ramp(self.step, start=3000, end=10000)
+            lam_phase = 0.3 * linear_ramp(self.step, start=5000, end=10000)
+            lam_r_align = 1.0 * (1-linear_ramp(self.step, start=0, end=3000))
+            lam_mix = 0.1 * linear_ramp(self.step, start=8000, end=15000)
+            loss = lam_exp * experts_loss + (1-lam_exp) * experts_gt_loss \
+                            + lam_phase * phase_loss \
+                            + lam_gt * gt_phase_loss \
+                            + lam_mix * l_mix \
+                            + lam_r_align * l_r_align \
+                            + lam_bin * bin_loss \
+                            + lam_bal * bal_loss \
+                            + lam_tv * tv_loss
+            self.step += 1
+        
+        output_dict = {
+            "loss": loss,
+            "manip-loss": (l_man_t).mean().item(),
+            "loco-loss": (l_loco_t).mean().item(),
+            "res-manip-loss": (r_man_detached * l_man_t).mean().item(),
+            "res-loco-loss": ((1.0 - r_man_detached) * l_loco_t).mean().item(),
+            "phase-loss": phase_loss.item(),
+            "gt-phase-loss": gt_phase_loss.item(),
+            "bin-loss": bin_loss.item(),
+            "bal-loss": bal_loss.item(),
+            "tv-loss": tv_loss.item(),
+            "mix-loss": l_mix.item(),
+            "r-align-loss": l_r_align.item(),
+        }
+        return BatchFeature(data=output_dict)
+
+    @torch.no_grad()
+    def get_action(self, backbone_output: BatchFeature, action_input: BatchFeature) -> BatchFeature:
+
+        backbone_output = self.process_backbone_output(backbone_output)
+
+        # Get vision and language embeddings.
+        vl_embs = backbone_output.backbone_features
+        vl_attn_mask = backbone_output.backbone_attention_mask
+        embodiment_id = action_input.embodiment_id
+
+        # Embed state.
+        state_features = self.state_encoder(action_input.state, embodiment_id)
+
+        # Set initial actions as the sampled noise.
+        batch_size = vl_embs.shape[0]
+        device = vl_embs.device
+        manip_actions = torch.randn(
+            size=(batch_size, self.config.action_horizon, self.config.action_dim),
+            dtype=vl_embs.dtype,
+            device=device,
+        )
+        manip_actions[:,:,31:32] = 0
+        loco_actions = torch.randn(
+            size=(batch_size, self.config.action_horizon, self.config.action_dim),
+            dtype=vl_embs.dtype,
+            device=device,
+        )
+        loco_actions[:,:,31:32] = 0
+
+        # phase: compute once (since your phase_model doesn't use actions)
+        with torch.no_grad():
+            logit_phase = self.phase_model(vl_embs, vl_attn_mask, state_features)
+            pred_phase = torch.sigmoid(logit_phase)  # shape: [B,1] or [B,T,1]
+        
+        num_steps = self.num_inference_timesteps
+        dt = 1.0 / num_steps
+        # Run denoising steps.
+        for t in range(num_steps):
+            t_cont = t / float(num_steps)  # e.g. goes 0, 1/N, 2/N, ...
+            t_discretized = int(t_cont * self.num_timestep_buckets)
+
+            # Embed noised action trajectory.
+            timesteps_tensor = torch.full(
+                size=(batch_size,), fill_value=t_discretized, device=device
+            )
+            manip_action_features = self.action_encoder(manip_actions, timesteps_tensor, embodiment_id)
+            loco_action_features = self.action_encoder(loco_actions, timesteps_tensor, embodiment_id)
+            # Maybe add position embedding.
+            if self.config.add_pos_embed:
+                pos_ids = torch.arange(manip_action_features.shape[1], dtype=torch.long, device=device)
+                pos_embs = self.position_embedding(pos_ids).unsqueeze(0)
+                manip_action_features = manip_action_features + pos_embs
+                loco_action_features = loco_action_features + pos_embs
+
+            # Join vision, language, state and action embedding along sequence dimension.
+            future_tokens = self.future_tokens.weight.unsqueeze(0).expand(vl_embs.shape[0], -1, -1)
+            manip_sa_embs = torch.cat((state_features, future_tokens, manip_action_features), dim=1)
+            loco_sa_embs = torch.cat((state_features, future_tokens, loco_action_features), dim=1)
+
+            # Run model forward.
+            manip_model_output = self.manip_model(
+                hidden_states=manip_sa_embs,
+                encoder_hidden_states=vl_embs,
+                timestep=timesteps_tensor,
+            )
+            loco_model_output = self.loco_model(
+                hidden_states=loco_sa_embs,
+                encoder_hidden_states=vl_embs,
+                timestep=timesteps_tensor,
+            )
+            # pred = self.action_decoder(model_output, embodiment_id)
+            pred_manip = self.manip_action_decoder(manip_model_output, embodiment_id)
+            pred_loco = self.loco_action_decoder(loco_model_output, embodiment_id)
+
+            # take last horizon chunk to match actions
+            v_man = pred_manip[:, -self.action_horizon:]  # [B,H,31]
+            v_loco = pred_loco[:, -self.action_horizon:]  # [B,H,31]
+
+            # # mixture velocity
+            # p = pred_phase[:, -self.action_horizon:]  # [B,H,1]
+            # pred_velocity = p * v_man + (1.0 - p) * v_loco  # [B,H,31]
+
+            # Update actions using euler integration.
+            manip_actions[:,:,:31] = manip_actions[:,:,:31] + dt * v_man
+            loco_actions[:,:,:31] = loco_actions[:,:,:31] + dt * v_loco
+        
+        if False:
+            min_val = 0.2 #0.09 #0.2
+            max_val = 0.8 #0.91 #0.8
+            pred_phase = (pred_phase - min_val) / (max_val - min_val)  # 0 ~ 1
+        
+        # phase-weighted actions
+        actions = pred_phase * manip_actions + (1.0 - pred_phase) * loco_actions
+        pred_phase_unnorm = (pred_phase * 2 - 1).clamp(-1, 1) # scale to -1 ~ 1
+        actions = torch.cat([actions[:,:,:-1], pred_phase_unnorm], -1)
         
         return BatchFeature(data={"action_pred": actions})
 
