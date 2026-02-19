@@ -385,8 +385,19 @@ class FlowmatchingActionHead(nn.Module):
             action_mask = action_input.action_mask
             loss = F.mse_loss(pred_actions, velocity, reduction="none") * action_mask
             loss = loss.sum() / action_mask.sum()
+        
+        # Compute part-wise losses for logging (arms, hands, locomotion, phase)
+        arm_loss = (F.mse_loss(pred_actions[:,:, 0:14], velocity[:,:, 0:14], reduction="none") * action_mask[:,:, 0:14]).sum() / action_mask[:,:, 0:14].sum()
+        hand_loss = (F.mse_loss(pred_actions[:,:, 14:28], velocity[:,:, 14:28], reduction="none") * action_mask[:,:, 14:28]).sum() / action_mask[:,:, 14:28].sum()
+        loco_loss_log = (F.mse_loss(pred_actions[:,:, 28:31], velocity[:,:, 28:31], reduction="none") * action_mask[:,:, 28:31]).sum() / action_mask[:,:, 28:31].sum()
+        phase_loss_log = (F.mse_loss(pred_actions[:,:, 31:32], velocity[:,:, 31:32], reduction="none") * action_mask[:,:, 31:32]).sum() / action_mask[:,:, 31:32].sum()
+        
         output_dict = {
             "loss": loss,
+            "arm-loss": arm_loss.item(),
+            "hand-loss": hand_loss.item(),
+            "loco-loss": loco_loss_log.item(),
+            "phase-loss": phase_loss_log.item(),
         }
         return BatchFeature(data=output_dict)
 
@@ -790,11 +801,17 @@ class GateFlowmatchingActionHead(nn.Module):
         # print('-'*30)
         # print('upper:', manip_loss.mean().item(), 'loco:', loco_loss.mean().item(), 'phase:', phase_loss.mean().item())
         
+        # Compute part-wise losses for logging (arms, hands, locomotion, phase)
+        arm_loss = (F.mse_loss(pred_manip[:,:, 0:14], velocity[:,:, 0:14], reduction="none") * action_mask[:,:, 0:14]).sum() / action_mask[:,:, 0:14].sum()
+        hand_loss = (F.mse_loss(pred_manip[:,:, 14:28], velocity[:,:, 14:28], reduction="none") * action_mask[:,:, 14:28]).sum() / action_mask[:,:, 14:28].sum()
+        
         output_dict = {
             "loss": loss,
             "manip-loss": manip_loss.mean().item(),
             "loco-loss": loco_loss.mean().item(),
             "phase-loss": phase_loss.mean().item(),
+            "arm-loss": arm_loss.item(),
+            "hand-loss": hand_loss.item(),
         }
         return BatchFeature(data=output_dict)
 
@@ -889,8 +906,11 @@ class MixtureFlowmatchingActionHead(nn.Module):
         config: FlowmatchingActionHeadConfig
     ):
         super().__init__()
-        self.version = 3
+        self.version = 6
         self.step = 0
+        print("="*40)
+        print("MixtureFlowmatchingActionHead version:", self.version)
+        print("="*40)
 
         self.hidden_size = config.hidden_size
         self.input_embedding_dim = config.input_embedding_dim
@@ -957,6 +977,14 @@ class MixtureFlowmatchingActionHead(nn.Module):
             self.tau = 0.2
             self.tau_end = 0.05
             self.tau_decay = 0.9997
+        elif self.version==5:
+            self.tau = 0.1
+            self.tau_end = 0.001
+            self.tau_decay = 0.9997
+        elif self.version==6:
+            self.tau = 0.1
+            self.tau_end = 0.001
+            self.tau_decay = 0.9998
         else: # scheduling: 0.1 -> 0.001 in 10k steps
             self.tau = 0.1 #2.0
             self.tau_end = 0.001
@@ -1224,6 +1252,32 @@ class MixtureFlowmatchingActionHead(nn.Module):
                             + lam_bal * bal_loss \
                             + lam_tv * tv_loss
             self.step += 1
+        elif self.version==5: # little slow version of v3 for real data
+            lam_exp = linear_ramp(self.step, start=5000, end=16000)
+            lam_phase = 0.3 * linear_ramp(self.step, start=8000, end=16000)
+            lam_r_align = 1.0 * (1-linear_ramp(self.step, start=0, end=5000))
+            loss = lam_exp * experts_loss + (1-lam_exp) * experts_gt_loss \
+                            + lam_phase * phase_loss \
+                            + lam_bin * bin_loss \
+                            + lam_bal * bal_loss \
+                            + lam_tv * tv_loss \
+                            + lam_gt * gt_phase_loss \
+                            + lam_mix * l_mix \
+                            + lam_r_align * l_r_align
+            self.step += 1
+        elif self.version==6: # slow version of v3 for real data
+            lam_exp = linear_ramp(self.step, start=8000, end=24000)
+            lam_phase = 0.3 * linear_ramp(self.step, start=13000, end=24000)
+            lam_r_align = 1.0 * (1-linear_ramp(self.step, start=0, end=8000))
+            loss = lam_exp * experts_loss + (1-lam_exp) * experts_gt_loss \
+                            + lam_phase * phase_loss \
+                            + lam_bin * bin_loss \
+                            + lam_bal * bal_loss \
+                            + lam_tv * tv_loss \
+                            + lam_gt * gt_phase_loss \
+                            + lam_mix * l_mix \
+                            + lam_r_align * l_r_align
+            self.step += 1
         
         output_dict = {
             "loss": loss,
@@ -1238,6 +1292,8 @@ class MixtureFlowmatchingActionHead(nn.Module):
             "tv-loss": tv_loss.item(),
             "mix-loss": l_mix.item(),
             "r-align-loss": l_r_align.item(),
+            "arm-loss": ((F.mse_loss(pred_manip[:,:, 0:14], velocity[:,:, 0:14], reduction="none") * action_mask[:,:, 0:14]).sum() / action_mask[:,:, 0:14].sum()).item(),
+            "hand-loss": ((F.mse_loss(pred_manip[:,:, 14:28], velocity[:,:, 14:28], reduction="none") * action_mask[:,:, 14:28]).sum() / action_mask[:,:, 14:28].sum()).item(),
         }
         return BatchFeature(data=output_dict)
 
@@ -1312,7 +1368,7 @@ class MixtureFlowmatchingActionHead(nn.Module):
             # Update actions using euler integration.
             actions[:,:,:31] = actions[:,:,:31] + dt * pred_velocity
         
-        if True:
+        if False:
             min_val = 0.2 #0.09 #0.2
             max_val = 0.8 #0.91 #0.8
             pred_phase = (pred_phase - min_val) / (max_val - min_val)  # 0 ~ 1
@@ -1690,6 +1746,8 @@ class MixtureDiTFlowmatchingActionHead(nn.Module):
             "tv-loss": tv_loss.item(),
             "mix-loss": l_mix.item(),
             "r-align-loss": l_r_align.item(),
+            "arm-loss": ((F.mse_loss(pred_manip[:,:, 0:14], velocity[:,:, 0:14], reduction="none") * action_mask[:,:, 0:14]).sum() / action_mask[:,:, 0:14].sum()).item(),
+            "hand-loss": ((F.mse_loss(pred_manip[:,:, 14:28], velocity[:,:, 14:28], reduction="none") * action_mask[:,:, 14:28]).sum() / action_mask[:,:, 14:28].sum()).item(),
         }
         return BatchFeature(data=output_dict)
 

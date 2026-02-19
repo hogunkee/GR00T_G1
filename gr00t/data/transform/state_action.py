@@ -749,9 +749,8 @@ class StateActionTransform(InvertibleModalityTransform):
                 ), f"Unexpected input dtype: {input_dtype}. Expected type: {torch.dtype}"
                 self._input_dtypes[key] = input_dtype
             else:
-                assert (
-                    data[key].dtype == self._input_dtypes[key]
-                ), f"All states corresponding to the same key must be of the same dtype, input dtype: {data[key].dtype}, expected dtype: {self._input_dtypes[key]}"
+                if data[key].dtype != self._input_dtypes[key]:
+                    data[key] = data[key].to(self._input_dtypes[key])
             # Rotate the state
             state = data[key]
             if key in self._rotation_transformers:

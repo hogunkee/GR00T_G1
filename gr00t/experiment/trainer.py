@@ -79,7 +79,8 @@ class DualBrainTrainer(transformers.Trainer):
         if self.args.logging_steps > 0 and self.state.global_step % self.args.logging_steps == 0:
             additional_metrics = {}
             for key in ["manip-loss", "loco-loss", "phase-loss", "gt-phase-loss", "r-align-loss",\
-                        "res-manip-loss", "res-loco-loss", "bin-loss", "bal-loss", "tv-loss", "mix-loss"]:
+                        "res-manip-loss", "res-loco-loss", "bin-loss", "bal-loss", "tv-loss", "mix-loss",\
+                        "arm-loss", "hand-loss"]:
                 if key in outputs:
                     additional_metrics[key] = outputs[key]
 
