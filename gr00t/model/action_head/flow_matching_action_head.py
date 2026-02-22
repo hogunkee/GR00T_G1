@@ -1324,6 +1324,11 @@ class MixtureFlowmatchingActionHead(nn.Module):
         with torch.no_grad():
             logit_phase = self.phase_model(vl_embs, vl_attn_mask, state_features)
             pred_phase = torch.sigmoid(logit_phase)  # shape: [B,1] or [B,T,1]
+            if True:
+                min_val = 0.09 #0.2
+                max_val = 0.91 #0.8
+                pred_phase = (pred_phase - min_val) / (max_val - min_val)  # 0 ~ 1
+                pred_phase = pred_phase.clamp(0, 1)
         
         num_steps = self.num_inference_timesteps
         dt = 1.0 / num_steps
@@ -1373,7 +1378,9 @@ class MixtureFlowmatchingActionHead(nn.Module):
             max_val = 0.8 #0.91 #0.8
             pred_phase = (pred_phase - min_val) / (max_val - min_val)  # 0 ~ 1
         
+        # print('predicted phase:', pred_phase)
         pred_phase = (pred_phase * 2 - 1).clamp(-1, 1) # scale to -1 ~ 1
+        # pred_phase = ((pred_phase - 0.5747) / 0.47696) #.clamp(-1, 1)
         actions = torch.cat([actions[:,:,:-1], pred_phase], -1)
         
         return BatchFeature(data={"action_pred": actions})

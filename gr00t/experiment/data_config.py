@@ -963,13 +963,13 @@ class UnitreeG1DataConfig(BaseDataConfig):
             StateActionToTensor(apply_to=self.state_keys),
             StateActionTransform(
                 apply_to=self.state_keys,
-                normalization_modes={key: "mean_std" for key in self.state_keys}, #"min_max"
+                normalization_modes={key: "min_max" for key in self.state_keys}, #"min_max" "mean_std"
             ),
             # action transforms
             StateActionToTensor(apply_to=self.action_keys),
             StateActionTransform(
                 apply_to=self.action_keys,
-                normalization_modes={key: "mean_std" for key in self.action_keys}, #"min_max"
+                normalization_modes={key: "min_max" for key in self.action_keys}, #"min_max" "mean_std"
             ),
             # concat transforms
             ConcatTransform(
