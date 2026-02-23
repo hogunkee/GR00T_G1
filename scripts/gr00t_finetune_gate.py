@@ -124,7 +124,7 @@ class ArgsConfig:
 
     loss_type: Literal['guide', 'energy-expert'] = 'energy-expert'
 
-    model_type: Literal['gate', 'mixture', 'mixture-dit'] = 'mixture-dit' #'mixture'
+    model_type: Literal['gate', 'mixture', 'mixture-dit'] = 'mixture' #'mixture-dit'
 #####################################################################################
 # main training function
 #####################################################################################
@@ -270,6 +270,7 @@ def main(config: ArgsConfig):
         adam_beta1=0.95,
         adam_beta2=0.999,
         adam_epsilon=1e-8,
+        max_grad_norm=1.0,
         learning_rate=config.learning_rate,
         weight_decay=config.weight_decay,
         warmup_ratio=config.warmup_ratio,

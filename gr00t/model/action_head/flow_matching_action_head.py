@@ -514,12 +514,12 @@ class GateFlowmatchingActionHead(nn.Module):
             hidden_dim=self.hidden_size,
             output_dim=3, #self.action_dim,
         )
-        self.phase_action_decoder = CategorySpecificMLP(
-            num_categories=config.max_num_embodiments,
-            input_dim=self.hidden_size,
-            hidden_dim=self.hidden_size,
-            output_dim=1, #self.action_dim,
-        )
+        # self.phase_action_decoder = CategorySpecificMLP(
+        #     num_categories=config.max_num_embodiments,
+        #     input_dim=self.hidden_size,
+        #     hidden_dim=self.hidden_size,
+        #     output_dim=1, #self.action_dim,
+        # )
         self.future_tokens = nn.Embedding(config.num_target_vision_tokens, self.input_embedding_dim)
         nn.init.normal_(self.future_tokens.weight, mean=0.0, std=0.02)
 
@@ -565,7 +565,7 @@ class GateFlowmatchingActionHead(nn.Module):
             self.action_encoder.requires_grad_(False)
             self.manip_action_decoder.requires_grad_(False)
             self.loco_action_decoder.requires_grad_(False)
-            self.phase_action_decoder.requires_grad_(False)
+            # self.phase_action_decoder.requires_grad_(False)
             if self.config.add_pos_embed:
                 self.position_embedding.requires_grad_(False)
         if not tune_diffusion_model:
@@ -593,7 +593,7 @@ class GateFlowmatchingActionHead(nn.Module):
                 self.action_encoder.eval()
                 self.manip_action_decoder.eval()
                 self.loco_action_decoder.eval()
-                self.phase_action_decoder.eval()
+                # self.phase_action_decoder.eval()
                 if self.config.add_pos_embed:
                     self.position_embedding.eval()
             if not self.tune_diffusion_model:
@@ -946,12 +946,12 @@ class MixtureFlowmatchingActionHead(nn.Module):
             hidden_dim=self.hidden_size,
             output_dim=self.action_dim-1,
         )
-        self.phase_action_decoder = CategorySpecificMLP(
-            num_categories=config.max_num_embodiments,
-            input_dim=self.hidden_size,
-            hidden_dim=self.hidden_size,
-            output_dim=1,
-        )
+        # self.phase_action_decoder = CategorySpecificMLP(
+        #     num_categories=config.max_num_embodiments,
+        #     input_dim=self.hidden_size,
+        #     hidden_dim=self.hidden_size,
+        #     output_dim=1,
+        # )
         self.future_tokens = nn.Embedding(config.num_target_vision_tokens, self.input_embedding_dim)
         nn.init.normal_(self.future_tokens.weight, mean=0.0, std=0.02)
 
@@ -985,6 +985,10 @@ class MixtureFlowmatchingActionHead(nn.Module):
             self.tau = 0.1
             self.tau_end = 0.001
             self.tau_decay = 0.9998
+        if self.version==7:
+            self.tau = 0.1
+            self.tau_end = 0.001
+            self.tau_decay = 0.9997
         else: # scheduling: 0.1 -> 0.001 in 10k steps
             self.tau = 0.1 #2.0
             self.tau_end = 0.001
@@ -1008,7 +1012,7 @@ class MixtureFlowmatchingActionHead(nn.Module):
             self.action_encoder.requires_grad_(False)
             self.manip_action_decoder.requires_grad_(False)
             self.loco_action_decoder.requires_grad_(False)
-            self.phase_action_decoder.requires_grad_(False)
+            # self.phase_action_decoder.requires_grad_(False)
             if self.config.add_pos_embed:
                 self.position_embedding.requires_grad_(False)
         if not tune_diffusion_model:
@@ -1036,7 +1040,7 @@ class MixtureFlowmatchingActionHead(nn.Module):
                 self.action_encoder.eval()
                 self.manip_action_decoder.eval()
                 self.loco_action_decoder.eval()
-                self.phase_action_decoder.eval()
+                # self.phase_action_decoder.eval()
                 if self.config.add_pos_embed:
                     self.position_embedding.eval()
             if not self.tune_diffusion_model:
@@ -1200,11 +1204,11 @@ class MixtureFlowmatchingActionHead(nn.Module):
         tv_loss = (tv_loss * timestep_valid[:, 1:]).sum() / timestep_valid[:, 1:].sum().clamp(min=1.0)
 
         lam_phase = 1.0
+        lam_gt = 1.0
+        lam_mix = 1.0
         lam_bin = 0.1
         lam_bal = 0.1
         lam_tv = 0.05
-        lam_gt = 1.0
-        lam_mix = 1.0
         if self.version==1:
             loss = experts_loss + lam_phase * phase_loss \
                             + lam_bin * bin_loss \
@@ -1268,7 +1272,7 @@ class MixtureFlowmatchingActionHead(nn.Module):
         elif self.version==6: # slow version of v3 for real data
             lam_exp = linear_ramp(self.step, start=8000, end=24000)
             lam_phase = 0.3 * linear_ramp(self.step, start=13000, end=24000)
-            lam_r_align = 1.0 * (1-linear_ramp(self.step, start=0, end=8000))
+            lam_r_align = 0.0 #1.0 * (1-linear_ramp(self.step, start=0, end=8000))
             loss = lam_exp * experts_loss + (1-lam_exp) * experts_gt_loss \
                             + lam_phase * phase_loss \
                             + lam_bin * bin_loss \
@@ -1277,6 +1281,24 @@ class MixtureFlowmatchingActionHead(nn.Module):
                             + lam_gt * gt_phase_loss \
                             + lam_mix * l_mix \
                             + lam_r_align * l_r_align
+            self.step += 1
+        elif self.version==7: # modified version of v6
+            lam_exp = 0.5 * linear_ramp(self.step, start=10000, end=20000)
+            lam_phase = 0.3 * linear_ramp(self.step, start=20000, end=30000)
+            lam_gt = 1.0
+            lam_r_align = 0.0 #1.0 * (1-linear_ramp(self.step, start=0, end=10000))
+            lam_mix = 1.0 * linear_ramp(self.step, start=20000, end=30000)
+            lam_bin = 0.02
+            lam_bal = 0.02
+            lam_tv = 0.01
+            loss = lam_exp * experts_loss + (1-lam_exp) * experts_gt_loss \
+                            + lam_phase * phase_loss \
+                            + lam_gt * gt_phase_loss \
+                            + lam_r_align * l_r_align \
+                            + lam_mix * l_mix \
+                            + lam_bin * bin_loss \
+                            + lam_bal * bal_loss \
+                            + lam_tv * tv_loss
             self.step += 1
         
         output_dict = {
@@ -1440,12 +1462,12 @@ class MixtureDiTFlowmatchingActionHead(nn.Module):
             hidden_dim=self.hidden_size,
             output_dim=self.action_dim-1,
         )
-        self.phase_action_decoder = CategorySpecificMLP(
-            num_categories=config.max_num_embodiments,
-            input_dim=self.hidden_size,
-            hidden_dim=self.hidden_size,
-            output_dim=1,
-        )
+        # self.phase_action_decoder = CategorySpecificMLP(
+        #     num_categories=config.max_num_embodiments,
+        #     input_dim=self.hidden_size,
+        #     hidden_dim=self.hidden_size,
+        #     output_dim=1,
+        # )
         self.future_tokens = nn.Embedding(config.num_target_vision_tokens, self.input_embedding_dim)
         nn.init.normal_(self.future_tokens.weight, mean=0.0, std=0.02)
 
@@ -1486,7 +1508,7 @@ class MixtureDiTFlowmatchingActionHead(nn.Module):
             self.action_encoder.requires_grad_(False)
             self.manip_action_decoder.requires_grad_(False)
             self.loco_action_decoder.requires_grad_(False)
-            self.phase_action_decoder.requires_grad_(False)
+            # self.phase_action_decoder.requires_grad_(False)
             if self.config.add_pos_embed:
                 self.position_embedding.requires_grad_(False)
         if not tune_diffusion_model:
@@ -1515,7 +1537,7 @@ class MixtureDiTFlowmatchingActionHead(nn.Module):
                 self.action_encoder.eval()
                 self.manip_action_decoder.eval()
                 self.loco_action_decoder.eval()
-                self.phase_action_decoder.eval()
+                # self.phase_action_decoder.eval()
                 if self.config.add_pos_embed:
                     self.position_embedding.eval()
             if not self.tune_diffusion_model:
