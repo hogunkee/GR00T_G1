@@ -1035,6 +1035,20 @@ class UnitreeG1LocoPhaseUpperDataConfig(UnitreeG1DataConfig):
     observation_indices = [0]
     action_indices = list(range(50))
 
+class UnitreeG1LocoUpperDataConfig(UnitreeG1DataConfig):
+    video_keys = ["video.rs_view"]
+    state_keys = [
+        "state.left_arm",
+        "state.right_arm",
+        "state.left_hand",
+        "state.right_hand",
+    ]
+    action_keys = ["action.left_arm", "action.right_arm", "action.left_hand", "action.right_hand", 
+                   "action.locomotion"]
+    language_keys = ["annotation.human.task_description"]
+    observation_indices = [0]
+    action_indices = list(range(50))
+
 class UnitreeG1FullBodyDataConfig(UnitreeG1DataConfig):
     video_keys = ["video.rs_view"]
     state_keys = [
@@ -1715,6 +1729,7 @@ DATA_CONFIG_MAP = {
     "unitree_g1_locophase": UnitreeG1LocoPhaseDataConfig(),
     "unitree_g1_locophase_50": UnitreeG1LocoPhase50DataConfig(),
     "unitree_g1_locophase_upper": UnitreeG1LocoPhaseUpperDataConfig(),
+    "unitree_g1_loco_upper": UnitreeG1LocoUpperDataConfig(),
     "unitree_g1_full_body": UnitreeG1FullBodyDataConfig(),
     "dex31_g1_arms_only": Dex31G1ArmsOnlyDataConfig(),
     "dex31_g1_arms_waist": Dex31G1ArmsWaistDataConfig(),    # Adaptation of GR1 policy to G1

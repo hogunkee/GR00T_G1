@@ -30,6 +30,28 @@ from gr00t.model.action_head.action_encoder import (
 from .cross_attention_dit import DiT, SelfAttentionTransformer
 from .gate_transformer import GateHorizonTransformer, UncertaintyHorizonTransformer
 
+def sparsemax(logits, dim=-1):
+    """Sparsemax activation (Martins & Astudillo, 2016).
+    Projects onto the probability simplex, producing sparse outputs.
+    Supports arbitrary shape; operates along `dim`."""
+    sorted_logits, _ = torch.sort(logits, descending=True, dim=dim)
+    cumsum = sorted_logits.cumsum(dim=dim)
+    k = torch.arange(1, logits.size(dim) + 1, device=logits.device, dtype=logits.dtype)
+    # reshape k for broadcasting
+    shape = [1] * logits.dim()
+    shape[dim] = -1
+    k = k.view(shape)
+    support = (1 + k * sorted_logits > cumsum).to(logits.dtype)
+    k_star = support.sum(dim=dim, keepdim=True)  # number of support elements
+    tau_star = (cumsum.gather(dim, (k_star - 1).long()) - 1) / k_star
+    output = (logits - tau_star).clamp(min=0)
+    return output
+
+def log_sparsemax(logits, dim=-1):
+    """Log of sparsemax output, safe for KL-div (clamps to avoid log(0))."""
+    p = sparsemax(logits, dim=dim)
+    return torch.log(p.clamp(min=1e-8))
+
 def linear_ramp(step, start, end):
     if step <= start: return 0.0
     if step >= end:   return 1.0
@@ -903,10 +925,11 @@ class MixtureFlowmatchingActionHead(nn.Module):
 
     def __init__(
         self,
-        config: FlowmatchingActionHeadConfig
+        config: FlowmatchingActionHeadConfig,
+        version: int = 6,
     ):
         super().__init__()
-        self.version = 6
+        self.version = version
         self.step = 0
         print("="*40)
         print("MixtureFlowmatchingActionHead version:", self.version)
@@ -981,14 +1004,26 @@ class MixtureFlowmatchingActionHead(nn.Module):
             self.tau = 0.1
             self.tau_end = 0.001
             self.tau_decay = 0.9997
-        elif self.version==6:
+        elif self.version==6 or self.version==8 or self.version==9:
             self.tau = 0.1
             self.tau_end = 0.001
             self.tau_decay = 0.9998
-        if self.version==7:
+        elif self.version==7:
             self.tau = 0.1
             self.tau_end = 0.001
             self.tau_decay = 0.9997
+        elif self.version==10:
+            self.tau = 0.05
+            self.tau_end = 0.0001
+            self.tau_decay = 0.9995
+        elif self.version==11:
+            self.tau = 0.1 #0.2
+            self.tau_end = 0.0005 #0.005
+            self.tau_decay = 0.999 #0.9995 #0.9995
+        elif self.version==12:
+            self.tau = 0.1 #0.2
+            self.tau_end = 0.0005 #0.005
+            self.tau_decay = 0.9995 #0.9995
         else: # scheduling: 0.1 -> 0.001 in 10k steps
             self.tau = 0.1 #2.0
             self.tau_end = 0.001
@@ -1170,17 +1205,24 @@ class MixtureFlowmatchingActionHead(nn.Module):
             logits = torch.cat([-l_man_n / self.tau, -l_loco_n / self.tau], dim=-1)  # [B,T,2]
         else:
             logits = torch.cat([-l_man_t / self.tau, -l_loco_t / self.tau], dim=-1)  # [B,T,2]
-        r = torch.softmax(logits, dim=-1)                               # [B,T,2]
+        if self.version==11 or self.version==12:
+            r = sparsemax(logits, dim=-1)                               # [B,T,2]
+        else:
+            r = torch.softmax(logits, dim=-1)                           # [B,T,2]
+        
         r_man = r[..., 0:1]                                             # [B,T,1]
         r_man_detached = r_man.detach()
 
         # r_align loss
         target = torch.cat([gt_g, 1.0 - gt_g], dim=-1)  # [B,T,2]
-        log_r = torch.log_softmax(logits, dim=-1)
+        if self.version==11 or self.version==12:
+            log_r = log_sparsemax(logits, dim=-1)
+        else:
+            log_r = torch.log_softmax(logits, dim=-1)
         l_r_align_t = F.kl_div(log_r, target, reduction="none")
         l_r_align = (l_r_align_t * timestep_valid).sum() / timestep_valid.sum().clamp(min=1.0)
         # l_r_align = F.kl_div(r.log(), target, reduction="batchmean")
-        
+
         # responsibility-weighted expert loss
         experts_loss_t = (r_man_detached * l_man_t + (1.0 - r_man_detached) * l_loco_t)  # [B,T,1]
         experts_loss = (experts_loss_t * timestep_valid).sum() / timestep_valid.sum().clamp(min=1.0)
@@ -1205,16 +1247,16 @@ class MixtureFlowmatchingActionHead(nn.Module):
 
         lam_phase = 1.0
         lam_gt = 1.0
-        lam_mix = 1.0
+        lam_mix = 2.0 #1.0
         lam_bin = 0.1
-        lam_bal = 0.1
+        lam_bal = 0.0 #0.1
         lam_tv = 0.05
         if self.version==1:
             loss = experts_loss + lam_phase * phase_loss \
                             + lam_bin * bin_loss \
-                            + lam_bal * bal_loss \
                             + lam_tv * tv_loss \
                             + lam_gt * gt_phase_loss
+                            # + lam_bal * bal_loss \
         elif self.version==2:
             loss = experts_loss + lam_phase * phase_loss \
                             + lam_bin * bin_loss \
@@ -1269,18 +1311,18 @@ class MixtureFlowmatchingActionHead(nn.Module):
                             + lam_mix * l_mix \
                             + lam_r_align * l_r_align
             self.step += 1
-        elif self.version==6: # slow version of v3 for real data
+        elif self.version==6:
             lam_exp = linear_ramp(self.step, start=8000, end=24000)
             lam_phase = 0.3 * linear_ramp(self.step, start=13000, end=24000)
-            lam_r_align = 0.0 #1.0 * (1-linear_ramp(self.step, start=0, end=8000))
+            lam_r_align = 0.3 * (1-linear_ramp(self.step, start=0, end=8000))
             loss = lam_exp * experts_loss + (1-lam_exp) * experts_gt_loss \
                             + lam_phase * phase_loss \
                             + lam_bin * bin_loss \
-                            + lam_bal * bal_loss \
                             + lam_tv * tv_loss \
                             + lam_gt * gt_phase_loss \
                             + lam_mix * l_mix \
                             + lam_r_align * l_r_align
+                            # + lam_bal * bal_loss \
             self.step += 1
         elif self.version==7: # modified version of v6
             lam_exp = 0.5 * linear_ramp(self.step, start=10000, end=20000)
@@ -1298,6 +1340,69 @@ class MixtureFlowmatchingActionHead(nn.Module):
                             + lam_mix * l_mix \
                             + lam_bin * bin_loss \
                             + lam_bal * bal_loss \
+                            + lam_tv * tv_loss
+            self.step += 1
+        elif self.version==8: # v6 -> expert gt loss only
+            lam_phase = 0.3 * linear_ramp(self.step, start=13000, end=24000)
+            lam_r_align = 0.5 * (1-linear_ramp(self.step, start=0, end=8000))
+            loss = experts_gt_loss \
+                            + lam_phase * phase_loss \
+                            + lam_bin * bin_loss \
+                            + lam_tv * tv_loss \
+                            + lam_gt * gt_phase_loss \
+                            + lam_mix * l_mix \
+                            + lam_r_align * l_r_align
+                            # + lam_bal * bal_loss \
+            self.step += 1
+        elif self.version==9: # v6 -> faster curriculum
+            lam_exp = linear_ramp(self.step, start=3000, end=10000)
+            lam_phase = 0.3 * linear_ramp(self.step, start=5000, end=10000)
+            lam_r_align = 0.5 * (1-linear_ramp(self.step, start=0, end=3000))
+            loss = lam_exp * experts_loss + (1-lam_exp) * experts_gt_loss \
+                            + lam_phase * phase_loss \
+                            + lam_bin * bin_loss \
+                            + lam_tv * tv_loss \
+                            + lam_gt * gt_phase_loss \
+                            + lam_mix * l_mix \
+                            + lam_r_align * l_r_align
+                            # + lam_bal * bal_loss \
+            self.step += 1
+        elif self.version==10: # v6 -> smaller tau for softmaax
+            lam_exp = linear_ramp(self.step, start=8000, end=24000)
+            lam_phase = 0.3 * linear_ramp(self.step, start=13000, end=24000)
+            lam_r_align = 0.5 * (1-linear_ramp(self.step, start=0, end=8000))
+            loss = lam_exp * experts_loss + (1-lam_exp) * experts_gt_loss \
+                            + lam_phase * phase_loss \
+                            + lam_bin * bin_loss \
+                            + lam_tv * tv_loss \
+                            + lam_gt * gt_phase_loss \
+                            + lam_mix * l_mix \
+                            + lam_r_align * l_r_align
+                            # + lam_bal * bal_loss \
+            self.step += 1
+        elif self.version==11: # sparse-max
+            lam_exp = linear_ramp(self.step, start=8000, end=24000)
+            lam_phase = 0.3 * linear_ramp(self.step, start=13000, end=24000)
+            lam_r_align = 0.3 * (1-linear_ramp(self.step, start=0, end=8000))
+            loss = lam_exp * experts_loss + (1-lam_exp) * experts_gt_loss \
+                            + lam_phase * phase_loss \
+                            + lam_gt * gt_phase_loss \
+                            + lam_r_align * l_r_align \
+                            + lam_mix * l_mix \
+                            + lam_bin * bin_loss \
+                            + lam_tv * tv_loss
+            self.step += 1
+        elif self.version==12: # new version
+            lam_exp = linear_ramp(self.step, start=15000, end=25000)
+            lam_phase = 0.3 * linear_ramp(self.step, start=0, end=20000)
+            lam_r_align = 0.15 * (1-linear_ramp(self.step, start=0, end=20000)) + 0.05
+            # lam_r_align = 0.3 * (1-linear_ramp(self.step, start=0, end=20000))
+            loss = lam_exp * experts_loss + (1-lam_exp) * experts_gt_loss \
+                            + lam_phase * phase_loss \
+                            + lam_gt * gt_phase_loss \
+                            + lam_r_align * l_r_align \
+                            + lam_mix * l_mix \
+                            + lam_bin * bin_loss \
                             + lam_tv * tv_loss
             self.step += 1
         
@@ -1422,10 +1527,11 @@ class MixtureDiTFlowmatchingActionHead(nn.Module):
 
     def __init__(
         self,
-        config: FlowmatchingActionHeadConfig
+        config: FlowmatchingActionHeadConfig,
+        version: int = 3,
     ):
         super().__init__()
-        self.version = 3
+        self.version = version
         self.step = 0
 
         self.hidden_size = config.hidden_size
